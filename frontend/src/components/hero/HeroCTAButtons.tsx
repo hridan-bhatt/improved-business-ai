@@ -9,17 +9,20 @@ export function HeroPrimaryButton({ to, children }: PrimaryProps) {
     <Link to={to} className="group relative inline-block">
       {/* Outer diffuse glow */}
       <span
-        className="absolute -inset-1.5 rounded-2xl opacity-0 blur-xl transition-all duration-500 group-hover:opacity-60"
+        className="absolute -inset-1.5 rounded-2xl opacity-0 blur-xl transition-all duration-500 group-hover:opacity-70"
         style={{
           background: 'linear-gradient(135deg, rgb(var(--ds-accent)), rgb(var(--ds-accent-teal)))',
         }}
         aria-hidden
       />
       <motion.span
-        className="relative flex items-center gap-2.5 rounded-[14px] px-7 py-3.5 font-semibold text-white"
+        className="relative flex items-center gap-2.5 rounded-[14px] px-7 py-3.5 font-bold uppercase tracking-wide"
         style={{
           background: 'linear-gradient(135deg, rgb(var(--ds-accent)) 0%, rgb(var(--ds-accent-teal)) 100%)',
-          boxShadow: '0 4px 20px rgb(var(--ds-accent) / 0.35), inset 0 1px 0 rgba(255,255,255,0.15)',
+          color: '#04060e',
+          letterSpacing: '0.06em',
+          boxShadow: '0 0 24px rgb(var(--ds-accent) / 0.4), 0 4px 16px rgb(var(--ds-accent) / 0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
+          fontFamily: 'var(--ds-font-display)',
         }}
         whileHover={{
           y: -2,

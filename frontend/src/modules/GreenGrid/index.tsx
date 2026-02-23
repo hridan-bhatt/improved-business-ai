@@ -10,6 +10,8 @@ import ModuleLayout from '../../components/module/ModuleLayout'
 import PreInsightLayout from '../../components/module/PreInsightLayout'
 import StatsGrid from '../../components/module/StatsGrid'
 import CsvUpload from '../../components/CsvUpload'
+import AIRecommendations from '../../components/AIRecommendations'
+import { useAuth } from '../../context/AuthContext'
 
 type ChartPoint = { name: string; usage: number }
 
@@ -24,6 +26,7 @@ export default function GreenGrid() {
   const [error, setError] = useState<string | null>(null)
   const [isClearing, setIsClearing] = useState(false)
   const { hasData, loading, refreshStatus } = useModuleStatus('green-grid')
+  const { token } = useAuth()
 
   const loadData = () => {
     greenApi.chart().then((data) => {
@@ -201,8 +204,9 @@ export default function GreenGrid() {
               No usage data
             </div>
           )}
-        </Card>
-      </motion.div>
-    </ModuleLayout>
-  )
-}
+          </Card>
+        </motion.div>
+        <AIRecommendations endpoint="/green-grid/recommendations" token={token} />
+      </ModuleLayout>
+    )
+  }

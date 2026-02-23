@@ -10,6 +10,8 @@ import ModuleLayout from '../../components/module/ModuleLayout'
 import PreInsightLayout from '../../components/module/PreInsightLayout'
 import StatsGrid from '../../components/module/StatsGrid'
 import CsvUpload from '../../components/CsvUpload'
+import AIRecommendations from '../../components/AIRecommendations'
+import { useAuth } from '../../context/AuthContext'
 
 const COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4']
 
@@ -29,6 +31,7 @@ export default function ExpenseSense() {
   const [error, setError] = useState<string | null>(null)
   const [isClearing, setIsClearing] = useState(false)
   const { hasData, loading, refreshStatus } = useModuleStatus('expense')
+  const { token } = useAuth()
 
   const loadData = () => {
     expenseApi.summary().then((data) => {
@@ -237,8 +240,9 @@ export default function ExpenseSense() {
               No trend data
             </div>
           )}
-        </Card>
-      </motion.div>
-    </ModuleLayout>
-  )
-}
+          </Card>
+        </motion.div>
+        <AIRecommendations endpoint="/expense/recommendations" token={token} />
+      </ModuleLayout>
+    )
+  }

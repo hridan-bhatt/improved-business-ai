@@ -9,16 +9,15 @@ import SectionDivider from '../components/storytelling/SectionDivider'
 export default function Landing() {
   return (
     <div className="relative min-h-screen bg-ds-bg-base transition-colors duration-300">
-      {/* Content layer: explicit z-10 so it always sits above any background/canvas */}
       <div className="relative z-10">
         <LandingNav />
         <main>
           <HeroSection />
-          <SectionDivider />
+          <SectionDivider ticker />
           <LandingFeatures />
           <SectionDivider />
           <SectionProductPreview />
-          <SectionDivider />
+          <SectionDivider ticker />
           <SectionHowItWorks />
           <SectionDivider />
           <SectionCTA />

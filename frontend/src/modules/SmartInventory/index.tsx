@@ -10,6 +10,8 @@ import ModuleLayout from '../../components/module/ModuleLayout'
 import PreInsightLayout from '../../components/module/PreInsightLayout'
 import StatsGrid from '../../components/module/StatsGrid'
 import CsvUpload from '../../components/CsvUpload'
+import AIRecommendations from '../../components/AIRecommendations'
+import { useAuth } from '../../context/AuthContext'
 
 const unlockVariants = {
   hidden: { opacity: 0, y: 24, filter: 'blur(8px)' },
@@ -21,6 +23,7 @@ export default function SmartInventory() {
   const [forecast, setForecast] = useState<Awaited<ReturnType<typeof inventoryApi.forecast>> | null>(null)
   const [isClearing, setIsClearing] = useState(false)
   const { hasData, loading, refreshStatus } = useModuleStatus('inventory')
+  const { token } = useAuth()
 
   const loadData = () => {
     inventoryApi.summary().then(setSummary).catch(() => setSummary(null))
@@ -209,8 +212,9 @@ export default function SmartInventory() {
           ) : (
             <p className="text-sm text-ds-text-muted">Loading forecast data…</p>
           )}
-        </Card>
-      </motion.div>
-    </ModuleLayout>
-  )
-}
+          </Card>
+        </motion.div>
+        <AIRecommendations endpoint="/inventory/recommendations" token={token} />
+      </ModuleLayout>
+    )
+  }

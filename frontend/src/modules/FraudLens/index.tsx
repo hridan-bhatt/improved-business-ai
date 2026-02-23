@@ -10,6 +10,8 @@ import ModuleLayout from '../../components/module/ModuleLayout'
 import PreInsightLayout from '../../components/module/PreInsightLayout'
 import StatsGrid from '../../components/module/StatsGrid'
 import CsvUpload from '../../components/CsvUpload'
+import AIRecommendations from '../../components/AIRecommendations'
+import { useAuth } from '../../context/AuthContext'
 
 const COLORS = { normal: '#3b82f6', fraud: '#f59e0b' }
 
@@ -38,6 +40,7 @@ export default function FraudLens() {
   const [error, setError] = useState<string | null>(null)
   const [isClearing, setIsClearing] = useState(false)
   const { hasData, loading, refreshStatus } = useModuleStatus('fraud')
+  const { token } = useAuth()
 
   const loadData = () => {
     fraudApi.insights().then((data) => {
@@ -202,31 +205,33 @@ export default function FraudLens() {
 
       <motion.div initial="hidden" animate="visible" variants={unlockVariants} transition={{ delay: 0.2 }}>
         <Card>
-          <h3 className="mb-4 text-sm font-medium text-ds-text-muted">Fraud vs normal</h3>
-          {pieData?.length ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.3 }}
-              className="h-64"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                    <Cell fill={COLORS.normal} />
-                    <Cell fill={COLORS.fraud} />
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </motion.div>
-          ) : (
-            <div className="flex h-64 items-center justify-center rounded-lg bg-ds-bg-base/50 text-sm text-ds-text-muted">
-              No chart data
-            </div>
-          )}
-        </Card>
-      </motion.div>
-    </ModuleLayout>
-  )
-}
+            <h3 className="mb-4 text-sm font-medium text-ds-text-muted">Fraud vs normal</h3>
+            {pieData?.length ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+                className="h-64"
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                      <Cell fill={COLORS.normal} />
+                      <Cell fill={COLORS.fraud} />
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </motion.div>
+            ) : (
+              <div className="flex h-64 items-center justify-center rounded-lg bg-ds-bg-base/50 text-sm text-ds-text-muted">
+                No chart data
+              </div>
+            )}
+          </Card>
+        </motion.div>
+
+        <AIRecommendations endpoint="/fraud/recommendations" token={token} />
+      </ModuleLayout>
+    )
+  }
