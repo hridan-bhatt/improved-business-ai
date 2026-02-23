@@ -1,0 +1,29 @@
+import HeroSection from '../components/hero/HeroSection'
+import LandingNav from '../components/navigation/LandingNav'
+import LandingFeatures from '../components/storytelling/LandingFeatures'
+import SectionCTA from '../components/storytelling/SectionCTA'
+import SectionHowItWorks from '../components/storytelling/SectionHowItWorks'
+import SectionProductPreview from '../components/storytelling/SectionProductPreview'
+import SectionDivider from '../components/storytelling/SectionDivider'
+
+export default function Landing() {
+  return (
+    <div className="relative min-h-screen bg-ds-bg-base transition-colors duration-300">
+      {/* Content layer: explicit z-10 so it always sits above any background/canvas */}
+      <div className="relative z-10">
+        <LandingNav />
+        <main>
+          <HeroSection />
+          <SectionDivider />
+          <LandingFeatures />
+          <SectionDivider />
+          <SectionProductPreview />
+          <SectionDivider />
+          <SectionHowItWorks />
+          <SectionDivider />
+          <SectionCTA />
+        </main>
+      </div>
+    </div>
+  )
+}

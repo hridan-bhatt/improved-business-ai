@@ -1,0 +1,184 @@
+@import './design-system/tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: rgb(var(--ds-bg-base));
+  color: rgb(var(--ds-text-primary));
+  font-family: var(--ds-font-sans);
+  margin: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.45s ease, color 0.45s ease;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Display font utility */
+.font-display {
+  font-family: var(--ds-font-display);
+}
+
+/* Three.js canvas: never sit above landing content; confine to its container */
+.hero-3d-canvas-wrapper {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.hero-3d-canvas-wrapper canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  display: block;
+}
+
+/* Surface card: elevation only */
+.surface-card {
+  background: rgb(var(--ds-bg-surface));
+  box-shadow: var(--ds-card-shadow);
+  border-radius: var(--ds-radius-lg);
+  border: 1px solid rgb(var(--ds-border) / 0.08);
+}
+
+.surface-card-elevated {
+  background: rgb(var(--ds-bg-surface));
+  box-shadow: var(--ds-surface-shadow);
+  border-radius: var(--ds-radius-lg);
+  border: 1px solid rgb(var(--ds-border) / 0.06);
+}
+
+/* Premium card with gradient surface */
+.card-premium {
+  background: linear-gradient(
+    145deg,
+    rgb(var(--ds-bg-surface)) 0%,
+    rgb(var(--ds-bg-elevated)) 100%
+  );
+  box-shadow: var(--ds-card-shadow);
+  border-radius: var(--ds-radius-lg);
+  border: 1px solid rgb(var(--ds-border) / 0.07);
+  transition: box-shadow 0.3s var(--ds-ease-out), transform 0.3s var(--ds-ease-out);
+}
+
+.card-premium:hover {
+  box-shadow: var(--ds-surface-shadow);
+  transform: translateY(-3px);
+}
+
+/* Shimmer animation for hero border */
+@keyframes hero-border-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Unlock glow animation */
+@keyframes unlock-glow-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(38, 210, 148, 0.4); }
+  50% { box-shadow: 0 0 20px 6px rgba(38, 210, 148, 0.12); }
+  100% { box-shadow: 0 0 0 0 rgba(38, 210, 148, 0); }
+}
+
+.unlock-glow {
+  animation: unlock-glow-pulse 1.8s ease-out 0.3s 1;
+}
+
+/* Gradient drift background — very subtle */
+@keyframes gradient-drift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.gradient-drift {
+  background-size: 300% 300%;
+  animation: gradient-drift 18s ease infinite;
+}
+
+/* Cinematic text clip gradient */
+.text-gradient-accent {
+  background: linear-gradient(
+    135deg,
+    rgb(var(--ds-accent)) 0%,
+    rgb(var(--ds-accent-teal)) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Reveal line underline */
+.reveal-underline {
+  position: relative;
+}
+.reveal-underline::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, rgb(var(--ds-accent)), rgb(var(--ds-accent-teal)));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.5s var(--ds-ease-out);
+}
+.reveal-underline:hover::after {
+  transform: scaleX(1);
+}
+
+/* Scrollbar — subtle on dark, minimal on light */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--ds-text-muted) / 0.3);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--ds-text-muted) / 0.5);
+}
+
+/* Smooth section transitions */
+section {
+  transition: background-color 0.45s ease;
+}
+
+/* Noise texture overlay */
+.noise-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.dark .noise-overlay {
+  opacity: 0.045;
+}
+
+/* Nav scrolled background */
+.nav-scrolled {
+  background-color: rgb(var(--ds-bg-base));
+}
+
+/* Focus visible */
+:focus-visible {
+  outline: 2px solid rgb(var(--ds-accent) / 0.7);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
