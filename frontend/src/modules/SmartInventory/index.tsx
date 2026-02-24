@@ -103,7 +103,7 @@ export default function SmartInventory() {
         bullets={['Real-time stock level monitoring across items', 'AI-driven reorder suggestion engine', 'Weekly demand forecasting and predictions']}
         icon={Package} accentColor={ACCENT}
         lockedMetrics={['Stock Items', 'Low Stock Count', 'Forecast Weeks']}
-        csvColumns={['name', 'stock', 'reorder_at']}
+          csvColumns={['item_name', 'category', 'quantity', 'price']}
         onUpload={handleFileUpload}
         successMessage={(res) => `Successfully added ${res.records_added} records`}
       />

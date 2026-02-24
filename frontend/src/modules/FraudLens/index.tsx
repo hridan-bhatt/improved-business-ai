@@ -1,9 +1,16 @@
-// FraudLens — Animated tabs: Overview | Flagged Alerts | AI Insights
+// FraudLens — Animated tabs: Overview | Risk Analysis | Flagged Alerts | AI Insights
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from 'framer-motion'
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts'
-import { Shield, CheckCircle2, AlertTriangle, Eye, Scan, RefreshCw, X, DollarSign, Store, Clock, Copy, Cpu, Loader2 } from 'lucide-react'
-import { fraudApi, ExplainResult, ExplainPoint } from './services/api'
+import {
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Legend,
+} from 'recharts'
+import {
+  Shield, CheckCircle2, AlertTriangle, Eye, Scan, RefreshCw, X,
+  DollarSign, Store, Clock, Copy, Cpu, Loader2, TrendingUp,
+} from 'lucide-react'
+import { fraudApi, ExplainResult, ExplainPoint, FraudTransaction, FraudUploadResult, RiskDistributionItem, TimelinePoint } from './services/api'
 import useModuleStatus from '../../hooks/useModuleStatus'
 import ModuleLayout from '../../components/module/ModuleLayout'
 import PreInsightLayout from '../../components/module/PreInsightLayout'
@@ -13,6 +20,11 @@ import { useAuth } from '../../context/AuthContext'
 
 const ACCENT = '#20D2BA'
 
+function scoreColor(score: number) {
+  if (score < 30) return '#22c594'
+  if (score <= 70) return '#fbbf24'
+  return '#f84646'
+}
 function riskColor(pct: number) {
   if (pct < 20) return '#22c594'
   if (pct <= 50) return '#fbbf24'
@@ -108,6 +120,23 @@ function ScanLines() {
   )
 }
 
+/* ── Risk Score Badge ────────────────────────────────────── */
+function RiskBadge({ label, score }: { label: string; score: number }) {
+  const color = scoreColor(score)
+  const bg = label === 'Safe'
+    ? 'rgba(34,197,148,0.12)'
+    : label === 'Suspicious'
+    ? 'rgba(251,191,36,0.12)'
+    : 'rgba(248,70,70,0.12)'
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em]"
+      style={{ background: bg, color, border: `1px solid ${color}30`, fontFamily: 'var(--ds-font-mono)' }}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color, boxShadow: `0 0 4px ${color}` }} />
+      {label}
+    </span>
+  )
+}
+
 /* ── Tooltip ─────────────────────────────────────────────── */
 const ChartTip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null
@@ -120,7 +149,7 @@ const ChartTip = ({ active, payload, label }: any) => {
       }}>
       {label && <p className="mb-1" style={{ color: 'rgb(var(--ds-text-muted))' }}>{label}</p>}
       {payload.map((p: any, i: number) => (
-        <p key={i} style={{ color: p.fill || p.color || ACCENT }}>
+        <p key={i} style={{ color: p.fill || p.color || p.stroke || ACCENT }}>
           {p.name}: <strong>{p.value?.toLocaleString()}</strong>
         </p>
       ))}
@@ -235,9 +264,10 @@ function ExplainModal({ result, onClose }: { result: ExplainResult; onClose: () 
 }
 
 /* ── Animated Tab Bar ────────────────────────────────────── */
-type TabId = 'overview' | 'alerts' | 'ai'
-const TABS: { id: TabId; label: string; count?: number }[] = [
+type TabId = 'overview' | 'risk' | 'alerts' | 'ai'
+const TABS: { id: TabId; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'risk',     label: 'Risk Analysis' },
   { id: 'alerts',   label: 'Flagged Alerts' },
   { id: 'ai',       label: 'AI Insights' },
 ]
@@ -246,7 +276,7 @@ function AnimatedTabBar({ active, onChange, alertCount }: {
   active: TabId; onChange: (t: TabId) => void; alertCount: number
 }) {
   return (
-    <div className="relative flex gap-1 rounded-2xl p-1"
+    <div className="relative flex flex-wrap gap-1 rounded-2xl p-1"
       style={{ background: 'rgb(var(--ds-bg-elevated))', border: '1px solid rgb(var(--ds-border) / 0.1)' }}>
       {TABS.map(t => (
         <button
@@ -281,12 +311,19 @@ function AnimatedTabBar({ active, onChange, alertCount }: {
   )
 }
 
+/* ─────────────────────────────────────────────────────────── */
+/*  Main Component                                             */
+/* ─────────────────────────────────────────────────────────── */
 export default function FraudLens() {
-  const [pieData, setPieData] = useState<{ name: string; value: number }[] | null>(null)
+  // Legacy overview state
   const [fraudCount, setFraudCount] = useState<number | null>(null)
   const [normalCount, setNormalCount] = useState<number | null>(null)
   const [fraudPct, setFraudPct] = useState<number | null>(null)
   const [alerts, setAlerts] = useState<{ id: string; type: string; score: number }[]>([])
+
+  // New engine state
+  const [uploadResult, setUploadResult] = useState<FraudUploadResult | null>(null)
+
   const [error, setError] = useState<string | null>(null)
   const [isClearing, setIsClearing] = useState(false)
   const [explainResult, setExplainResult] = useState<ExplainResult | null>(null)
@@ -303,10 +340,6 @@ export default function FraudLens() {
         ? Math.round((data.anomalies_detected / data.total_transactions) * 100)
         : 0
       setFraudPct(pct)
-      setPieData([
-        { name: 'Normal', value: data.total_transactions - data.anomalies_detected },
-        { name: 'Fraud', value: data.anomalies_detected },
-      ])
       setAlerts(data.alerts.map(a => ({ id: String(a.id), type: a.type, score: a.score })))
     }).catch(() => {})
   }, [])
@@ -317,19 +350,25 @@ export default function FraudLens() {
     setError(null)
     try {
       const data = await fraudApi.upload(file)
-      setFraudCount(data.fraud_count)
-      setNormalCount(data.normal_count)
-      setFraudPct(data.fraud_percentage)
-      setPieData([
-        { name: 'Normal', value: data.normal_count },
-        { name: 'Fraud', value: data.fraud_count },
-      ])
+      // Hydrate all state from new rich response
+      const s = data.summary
+      setFraudCount(s.fraud_count)
+      setNormalCount(s.normal_count)
+      setFraudPct(Math.round(s.fraud_percentage))
+      setUploadResult(data)
+      // Build alerts from high-risk + suspicious transactions
+      setAlerts(
+        data.transactions
+          .filter(t => t.risk_label !== 'Safe')
+          .slice(0, 50)
+          .map(t => ({ id: t.transaction_id, type: t.risk_label, score: t.risk_score / 100 }))
+      )
       await refreshStatus()
-      loadData()
       return data
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
-      setPieData(null); setFraudCount(null); setNormalCount(null); setFraudPct(null)
+      setUploadResult(null)
+      setFraudCount(null); setNormalCount(null); setFraudPct(null)
     }
   }
 
@@ -338,7 +377,8 @@ export default function FraudLens() {
     setIsClearing(true)
     try {
       await fraudApi.clear()
-      setPieData(null); setFraudCount(null); setNormalCount(null); setFraudPct(null)
+      setUploadResult(null)
+      setFraudCount(null); setNormalCount(null); setFraudPct(null)
       setAlerts([]); setError(null)
       await refreshStatus()
     } catch { alert('Failed to reset.') } finally { setIsClearing(false) }
@@ -371,13 +411,13 @@ export default function FraudLens() {
         moduleTitle="Fraud Lens"
         tagline="Unmask hidden threats in your transaction data."
         bullets={[
-          'Anomaly detection across all transactions',
-          'Risk scoring and fraud distribution analysis',
-          'Normal vs fraudulent transaction breakdown',
+          'Multi-criteria risk scoring per transaction',
+          'Safe / Suspicious / High Risk classification',
+          'Risk distribution charts and score timeline',
         ]}
         icon={Shield} accentColor={ACCENT}
-        lockedMetrics={['Fraud Count', 'Normal Count', 'Risk Level']}
-        csvColumns={['transaction_id', 'amount', 'is_fraud']}
+        lockedMetrics={['Risk Score', 'Fraud Count', 'Safe Transactions']}
+        csvColumns={['transaction_id', 'amount', 'timestamp', 'merchant_category', 'account_age_days']}
         onUpload={handleFileUpload}
       />
     </ModuleLayout>
@@ -387,12 +427,26 @@ export default function FraudLens() {
   const color = riskColor(pct)
   const total = (fraudCount ?? 0) + (normalCount ?? 0)
 
+  // Pie data: prefer engine distribution, fall back to legacy
+  const pieData: RiskDistributionItem[] = uploadResult
+    ? uploadResult.chart_data.risk_distribution.filter(d => d.value > 0)
+    : [
+        { name: 'Safe',    value: normalCount ?? 0, color: '#22c594' },
+        { name: 'Flagged', value: fraudCount  ?? 0, color: '#f84646' },
+      ]
+
+  const timelineSeries: TimelinePoint[] = uploadResult?.chart_data.timeline_series ?? []
+
+  const highRiskTx: FraudTransaction[] = uploadResult
+    ? uploadResult.transactions.filter(t => t.risk_label === 'High Risk').slice(0, 20)
+    : []
+
   const radarData = [
     { subject: 'Volume',     A: Math.min(100, (total / 100) * 20 + 40), fullMark: 100 },
     { subject: 'Fraud %',    A: pct,                                      fullMark: 100 },
     { subject: 'Anomaly',    A: Math.min(100, pct * 1.5 + 10),           fullMark: 100 },
     { subject: 'Pattern',    A: Math.max(10, 100 - pct * 0.8),           fullMark: 100 },
-    { subject: 'Risk Score', A: pct,                                      fullMark: 100 },
+    { subject: 'Risk Score', A: uploadResult ? uploadResult.summary.average_risk_score : pct, fullMark: 100 },
   ]
 
   return (
@@ -448,7 +502,7 @@ export default function FraudLens() {
               {isClearing ? 'Clearing…' : 'Reset'}
             </button>
           )}
-          <CsvUpload onUpload={handleFileUpload} title="Upload Transactions" description="transaction_id, amount, is_fraud" />
+          <CsvUpload onUpload={handleFileUpload} title="Upload Transactions" description="transaction_id, amount, timestamp, merchant_category, account_age_days" />
         </div>
       </motion.div>
 
@@ -466,7 +520,7 @@ export default function FraudLens() {
       {/* ── Tab Content ───────────────────────────────── */}
       <AnimatePresence mode="wait">
 
-        {/* Overview Tab */}
+        {/* ═══ Overview Tab ═══════════════════════════════════════════════ */}
         {activeTab === 'overview' && (
           <motion.div key="overview"
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
@@ -498,7 +552,7 @@ export default function FraudLens() {
                 </div>
               </div>
 
-              {/* Fraud count */}
+              {/* High Risk count */}
               <div className="relative overflow-hidden rounded-2xl p-5"
                 style={{ background: 'rgb(var(--ds-bg-surface))', border: '1px solid rgba(248,70,70,0.18)', boxShadow: '0 0 30px rgba(248,70,70,0.05)' }}>
                 <ScanLines />
@@ -506,16 +560,20 @@ export default function FraudLens() {
                   style={{ background: 'rgba(248,70,70,0.18)' }} />
                 <div className="mb-3 flex items-center justify-between">
                   <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
-                    style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>Fraud Detected</p>
+                    style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                    {uploadResult ? 'High Risk' : 'Fraud Detected'}
+                  </p>
                   <AlertTriangle className="h-3.5 w-3.5" style={{ color: '#f84646' }} />
                 </div>
                 <p className="text-4xl font-black tabular-nums" style={{ color: '#f84646', fontFamily: 'var(--ds-font-display)' }}>
-                  {(fraudCount ?? 0).toLocaleString()}
+                  {(uploadResult ? uploadResult.summary.high_risk_count : (fraudCount ?? 0)).toLocaleString()}
                 </p>
-                <p className="mt-1 text-xs" style={{ color: 'rgba(108,128,162,0.65)', fontFamily: 'var(--ds-font-mono)' }}>anomalous transactions</p>
+                <p className="mt-1 text-xs" style={{ color: 'rgba(108,128,162,0.65)', fontFamily: 'var(--ds-font-mono)' }}>
+                  {uploadResult ? 'high risk transactions' : 'anomalous transactions'}
+                </p>
               </div>
 
-              {/* Normal count */}
+              {/* Safe count */}
               <div className="relative overflow-hidden rounded-2xl p-5"
                 style={{ background: 'rgb(var(--ds-bg-surface))', border: '1px solid rgba(34,197,148,0.18)', boxShadow: '0 0 30px rgba(34,197,148,0.05)' }}>
                 <div className="pointer-events-none absolute -right-5 -top-5 h-20 w-20 rounded-full blur-3xl"
@@ -526,47 +584,46 @@ export default function FraudLens() {
                   <CheckCircle2 className="h-3.5 w-3.5" style={{ color: '#22c594' }} />
                 </div>
                 <p className="text-4xl font-black tabular-nums" style={{ color: '#22c594', fontFamily: 'var(--ds-font-display)' }}>
-                  {(normalCount ?? 0).toLocaleString()}
+                  {(uploadResult ? uploadResult.summary.safe_count : (normalCount ?? 0)).toLocaleString()}
                 </p>
-                <p className="mt-1 text-xs" style={{ color: 'rgba(108,128,162,0.65)', fontFamily: 'var(--ds-font-mono)' }}>verified normal</p>
+                <p className="mt-1 text-xs" style={{ color: 'rgba(108,128,162,0.65)', fontFamily: 'var(--ds-font-mono)' }}>verified safe</p>
               </div>
             </div>
 
-            {/* Charts */}
+            {/* Charts row */}
             <div className="grid gap-6 lg:grid-cols-2">
+              {/* Risk Distribution Pie */}
               <TiltCard className="relative overflow-hidden rounded-2xl p-6"
                 style={{ background: 'rgb(var(--ds-bg-surface))', border: `1px solid ${ACCENT}12`, boxShadow: 'var(--ds-card-shadow)' }}>
                 <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full blur-3xl"
                   style={{ background: `${ACCENT}06` }} />
                 <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.14em]"
                   style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
-                  FRAUD VS NORMAL DISTRIBUTION
+                  RISK DISTRIBUTION
                 </p>
-                {pieData?.length ? (
+                {pieData.length ? (
                   <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
-                    <div className="h-56 w-full sm:w-64 shrink-0">
+                    <div className="h-52 w-full sm:w-56 shrink-0">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%"
-                            innerRadius={60} outerRadius={90} paddingAngle={4} strokeWidth={0}>
-                            <Cell fill="#22c594" />
-                            <Cell fill="#f84646" />
+                            innerRadius={55} outerRadius={85} paddingAngle={4} strokeWidth={0}>
+                            {pieData.map((entry, i) => (
+                              <Cell key={i} fill={entry.color} />
+                            ))}
                           </Pie>
                           <Tooltip content={<ChartTip />} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
-                    <div className="flex flex-col gap-3 w-full">
-                      {[
-                        { label: 'Normal', value: normalCount ?? 0, color: '#22c594', pct: total > 0 ? 100 - pct : 0 },
-                        { label: 'Fraud',  value: fraudCount ?? 0,  color: '#f84646', pct },
-                      ].map((item) => (
-                        <div key={item.label} className="rounded-xl p-3.5"
+                    <div className="flex flex-col gap-2.5 w-full">
+                      {pieData.map((item) => (
+                        <div key={item.name} className="rounded-xl p-3"
                           style={{ background: `${item.color}07`, border: `1px solid ${item.color}18` }}>
-                          <div className="mb-2 flex items-center justify-between">
+                          <div className="mb-1.5 flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <div className="h-2 w-2 rounded-full" style={{ background: item.color, boxShadow: `0 0 6px ${item.color}` }} />
-                              <span className="text-xs font-semibold" style={{ color: 'rgb(var(--ds-text-secondary))' }}>{item.label}</span>
+                              <span className="text-xs font-semibold" style={{ color: 'rgb(var(--ds-text-secondary))' }}>{item.name}</span>
                             </div>
                             <span className="text-sm font-black tabular-nums" style={{ color: item.color, fontFamily: 'var(--ds-font-mono)' }}>
                               {item.value.toLocaleString()}
@@ -576,7 +633,7 @@ export default function FraudLens() {
                             <motion.div className="h-full rounded-full"
                               style={{ background: item.color, boxShadow: `0 0 6px ${item.color}50` }}
                               initial={{ width: 0 }}
-                              animate={{ width: `${item.pct}%` }}
+                              animate={{ width: total > 0 ? `${Math.round((item.value / total) * 100)}%` : '0%' }}
                               transition={{ duration: 1, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
                             />
                           </div>
@@ -585,13 +642,14 @@ export default function FraudLens() {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex h-56 items-center justify-center text-xs"
+                  <div className="flex h-52 items-center justify-center text-xs"
                     style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
                     No distribution data
                   </div>
                 )}
               </TiltCard>
 
+              {/* Threat Profile Radar */}
               <TiltCard className="relative overflow-hidden rounded-2xl p-6"
                 style={{ background: 'rgb(var(--ds-bg-surface))', border: 'solid 1px rgba(248,70,70,0.1)', boxShadow: 'var(--ds-card-shadow)' }}>
                 <div className="pointer-events-none absolute -left-6 -top-6 h-28 w-28 rounded-full blur-3xl"
@@ -600,9 +658,9 @@ export default function FraudLens() {
                   style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
                   THREAT PROFILE ANALYSIS
                 </p>
-                <div className="h-56">
+                <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart data={radarData} outerRadius={80}>
+                    <RadarChart data={radarData} outerRadius={75}>
                       <PolarGrid stroke="rgb(var(--ds-border) / 0.1)" />
                       <PolarAngleAxis dataKey="subject"
                         tick={{ fontSize: 10, fontFamily: 'var(--ds-font-mono)', fill: 'rgb(var(--ds-text-muted))' }} />
@@ -615,7 +673,7 @@ export default function FraudLens() {
               </TiltCard>
             </div>
 
-            {/* Analysis summary */}
+            {/* Analysis Summary */}
             <div className="relative overflow-hidden rounded-2xl p-6"
               style={{ background: 'rgb(var(--ds-bg-surface))', border: `1px solid ${color}15`, boxShadow: 'var(--ds-card-shadow)' }}>
               <ScanLines />
@@ -630,10 +688,10 @@ export default function FraudLens() {
               </div>
               <div className="grid gap-3 sm:grid-cols-4">
                 {[
-                  { label: 'Total Scanned', value: total.toLocaleString(), color: ACCENT },
-                  { label: 'Fraud Rate',    value: `${pct}%`,              color },
-                  { label: 'Anomalies',     value: (fraudCount ?? 0).toLocaleString(), color: '#f84646' },
-                  { label: 'Threat Level',  value: riskLabel(pct).split(' ')[0], color },
+                  { label: 'Total Scanned',    value: total.toLocaleString(), color: ACCENT },
+                  { label: 'Fraud Rate',        value: `${pct}%`, color },
+                  { label: 'High Risk',         value: (uploadResult?.summary.high_risk_count ?? fraudCount ?? 0).toLocaleString(), color: '#f84646' },
+                  { label: 'Avg Risk Score',    value: uploadResult ? `${uploadResult.summary.average_risk_score}` : riskLabel(pct).split(' ')[0], color },
                 ].map((item) => (
                   <div key={item.label} className="rounded-xl p-3.5"
                     style={{ background: 'rgb(var(--ds-bg-elevated))', border: '1px solid rgb(var(--ds-border) / 0.08)' }}>
@@ -652,7 +710,127 @@ export default function FraudLens() {
           </motion.div>
         )}
 
-        {/* Flagged Alerts Tab */}
+        {/* ═══ Risk Analysis Tab ═══════════════════════════════════════════ */}
+        {activeTab === 'risk' && (
+          <motion.div key="risk"
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+            className="space-y-6">
+
+            {/* Risk Score Timeline */}
+            <div className="relative overflow-hidden rounded-2xl p-6"
+              style={{ background: 'rgb(var(--ds-bg-surface))', border: `1px solid ${ACCENT}12`, boxShadow: 'var(--ds-card-shadow)' }}>
+              <div className="mb-4 flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" style={{ color: ACCENT }} />
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
+                  style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                  RISK SCORE TIMELINE
+                </p>
+              </div>
+              {timelineSeries.length > 0 ? (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={timelineSeries} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                      <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }} />
+                      <YAxis tick={{ fontSize: 9, fill: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }} />
+                      <Tooltip content={<ChartTip />} />
+                      <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'var(--ds-font-mono)', paddingTop: '12px' }} />
+                      <Line type="monotone" dataKey="safe" name="Safe" stroke="#22c594" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                      <Line type="monotone" dataKey="suspicious" name="Suspicious" stroke="#fbbf24" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                      <Line type="monotone" dataKey="high_risk" name="High Risk" stroke="#f84646" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="flex h-64 items-center justify-center text-xs"
+                  style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                  Upload a CSV with a timestamp column to see the timeline
+                </div>
+              )}
+            </div>
+
+            {/* High Risk Transactions Table */}
+            <div className="relative overflow-hidden rounded-2xl p-6"
+              style={{ background: 'rgb(var(--ds-bg-surface))', border: '1px solid rgba(248,70,70,0.12)', boxShadow: 'var(--ds-card-shadow)' }}>
+              <div className="mb-4 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" style={{ color: '#f84646' }} />
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
+                  style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                  HIGH-RISK TRANSACTIONS
+                </p>
+                <span className="ml-auto rounded-full px-2 py-0.5 text-[9px] font-bold"
+                  style={{ background: 'rgba(248,70,70,0.1)', color: '#f84646', fontFamily: 'var(--ds-font-mono)' }}>
+                  {highRiskTx.length} flagged
+                </span>
+              </div>
+              {highRiskTx.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs" style={{ fontFamily: 'var(--ds-font-mono)' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgb(var(--ds-border) / 0.1)' }}>
+                        {['Transaction ID', 'Amount', 'Category', 'Risk Score', 'Label', 'Action'].map(h => (
+                          <th key={h} className="pb-2 pr-4 text-left font-semibold"
+                            style={{ color: 'rgb(var(--ds-text-muted))' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {highRiskTx.map((tx, i) => (
+                        <motion.tr key={tx.transaction_id}
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.04 }}
+                          style={{ borderBottom: '1px solid rgb(var(--ds-border) / 0.06)' }}>
+                          <td className="py-2.5 pr-4 font-medium" style={{ color: ACCENT }}>{tx.transaction_id}</td>
+                          <td className="py-2.5 pr-4 font-black tabular-nums" style={{ color: '#f84646' }}>
+                            ${tx.amount.toLocaleString()}
+                          </td>
+                          <td className="py-2.5 pr-4" style={{ color: 'rgb(var(--ds-text-secondary))' }}>
+                            {tx.merchant_category || '—'}
+                          </td>
+                          <td className="py-2.5 pr-4">
+                            <div className="flex items-center gap-2">
+                              <div className="h-1.5 w-16 overflow-hidden rounded-full" style={{ background: 'rgb(var(--ds-border) / 0.12)' }}>
+                                <div className="h-full rounded-full" style={{ width: `${tx.risk_score}%`, background: scoreColor(tx.risk_score) }} />
+                              </div>
+                              <span className="font-black tabular-nums" style={{ color: scoreColor(tx.risk_score) }}>
+                                {tx.risk_score}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-2.5 pr-4">
+                            <RiskBadge label={tx.risk_label} score={tx.risk_score} />
+                          </td>
+                          <td className="py-2.5">
+                            <motion.button
+                              onClick={() => handleExplain(tx.transaction_id)}
+                              disabled={explainLoading === tx.transaction_id}
+                              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.06em] disabled:opacity-60"
+                              style={{ background: `${ACCENT}10`, border: `1px solid ${ACCENT}25`, color: ACCENT }}
+                              whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
+                              {explainLoading === tx.transaction_id
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Eye className="h-3 w-3" />}
+                              Explain
+                            </motion.button>
+                          </td>
+                        </motion.tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="flex h-32 items-center justify-center text-xs"
+                  style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                  No high-risk transactions detected
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ═══ Flagged Alerts Tab ══════════════════════════════════════════ */}
         {activeTab === 'alerts' && (
           <motion.div key="alerts"
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
@@ -675,45 +853,50 @@ export default function FraudLens() {
                   <table className="w-full text-xs" style={{ fontFamily: 'var(--ds-font-mono)' }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid rgb(var(--ds-border) / 0.1)' }}>
-                        {['Transaction ID', 'Type', 'Risk Score', 'Action'].map(h => (
+                        {['Transaction ID', 'Classification', 'Risk Score', 'Action'].map(h => (
                           <th key={h} className="pb-2 pr-4 text-left font-semibold"
                             style={{ color: 'rgb(var(--ds-text-muted))' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {alerts.map((alert, i) => (
-                        <motion.tr key={alert.id}
-                          initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.05 }}
-                          style={{ borderBottom: '1px solid rgb(var(--ds-border) / 0.06)' }}>
-                          <td className="py-2.5 pr-4 font-medium" style={{ color: ACCENT }}>{alert.id}</td>
-                          <td className="py-2.5 pr-4" style={{ color: 'rgb(var(--ds-text-secondary))' }}>{alert.type}</td>
-                          <td className="py-2.5 pr-4">
-                            <span className="rounded-full px-2 py-0.5 text-[9px] font-bold"
-                              style={{
-                                background: alert.score > 0.5 ? 'rgba(248,70,70,0.1)' : 'rgba(251,191,36,0.1)',
-                                color: alert.score > 0.5 ? '#f84646' : '#fbbf24',
-                              }}>
-                              {alert.score.toFixed(2)}
-                            </span>
-                          </td>
-                          <td className="py-2.5">
-                            <motion.button
-                              onClick={() => handleExplain(alert.id)}
-                              disabled={explainLoading === alert.id}
-                              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.06em] disabled:opacity-60"
-                              style={{ background: `${ACCENT}10`, border: `1px solid ${ACCENT}25`, color: ACCENT }}
-                              whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-                              {explainLoading === alert.id
-                                ? <Loader2 className="h-3 w-3 animate-spin" />
-                                : <Eye className="h-3 w-3" />}
-                              Explain
-                            </motion.button>
-                          </td>
-                        </motion.tr>
-                      ))}
+                      {alerts.map((alert, i) => {
+                        const score100 = Math.round(alert.score * 100)
+                        const label = score100 > 70 ? 'High Risk' : score100 > 30 ? 'Suspicious' : 'Safe'
+                        return (
+                          <motion.tr key={alert.id}
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.05 }}
+                            style={{ borderBottom: '1px solid rgb(var(--ds-border) / 0.06)' }}>
+                            <td className="py-2.5 pr-4 font-medium" style={{ color: ACCENT }}>{alert.id}</td>
+                            <td className="py-2.5 pr-4">
+                              <RiskBadge label={label} score={score100} />
+                            </td>
+                            <td className="py-2.5 pr-4">
+                              <div className="flex items-center gap-2">
+                                <div className="h-1.5 w-16 overflow-hidden rounded-full" style={{ background: 'rgb(var(--ds-border) / 0.12)' }}>
+                                  <div className="h-full rounded-full" style={{ width: `${score100}%`, background: scoreColor(score100) }} />
+                                </div>
+                                <span className="font-black" style={{ color: scoreColor(score100) }}>{score100}</span>
+                              </div>
+                            </td>
+                            <td className="py-2.5">
+                              <motion.button
+                                onClick={() => handleExplain(alert.id)}
+                                disabled={explainLoading === alert.id}
+                                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.06em] disabled:opacity-60"
+                                style={{ background: `${ACCENT}10`, border: `1px solid ${ACCENT}25`, color: ACCENT }}
+                                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
+                                {explainLoading === alert.id
+                                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                                  : <Eye className="h-3 w-3" />}
+                                Explain
+                              </motion.button>
+                            </td>
+                          </motion.tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -729,7 +912,7 @@ export default function FraudLens() {
           </motion.div>
         )}
 
-        {/* AI Insights Tab */}
+        {/* ═══ AI Insights Tab ═════════════════════════════════════════════ */}
         {activeTab === 'ai' && (
           <motion.div key="ai"
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}

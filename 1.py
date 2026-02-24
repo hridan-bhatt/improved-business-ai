@@ -1,39 +1,55 @@
 import csv
 import random
+import uuid
+from datetime import datetime, timedelta
 
-filename = "inventory_test.csv"
-num_rows = 500  # change if needed
+filename = "fraud_test.csv"
+num_rows = 1200  # change as needed
 
-data = {
-    "Electronics": [
-        "USB Cable", "Power Bank", "Router", "Keyboard", "Mouse", "Smart Plug"
-    ],
-    "Electrical": [
-        "LED Bulb", "Tube Light", "Switch Board", "Extension Cord", "Ceiling Fan"
-    ],
-    "Accessories": [
-        "Laptop Stand", "HDMI Cable", "Surge Protector", "Battery Pack"
-    ]
-}
+merchant_categories = [
+    "grocery",
+    "electronics",
+    "restaurant",
+    "fuel",
+    "travel",
+    "crypto",
+    "gambling",
+    "shopping"
+]
+
+start_date = datetime(2024, 1, 1)
 
 with open(filename, "w", newline="") as f:
     writer = csv.writer(f)
-    writer.writerow(["category", "item_name", "quantity", "price"])
+    writer.writerow([
+        "transaction_id",
+        "amount",
+        "timestamp",
+        "merchant_category",
+        "account_age_days"
+    ])
 
     for _ in range(num_rows):
-        category = random.choice(list(data.keys()))
-        item_name = random.choice(data[category])
+        transaction_id = str(uuid.uuid4())
 
-        quantity = random.randint(0, 300)
+        # realistic amount spread
+        amount = round(random.uniform(10, 8000), 2)
 
-        # realistic price bands
-        if category == "Electronics":
-            price = round(random.uniform(300, 5000), 2)
-        elif category == "Electrical":
-            price = round(random.uniform(50, 3000), 2)
-        else:
-            price = round(random.uniform(200, 4000), 2)
+        # random timestamp within 1 year
+        random_minutes = random.randint(0, 365 * 24 * 60)
+        ts = start_date + timedelta(minutes=random_minutes)
+        timestamp = ts.strftime("%Y-%m-%d %H:%M:%S")
 
-        writer.writerow([category, item_name, quantity, price])
+        merchant_category = random.choice(merchant_categories)
+
+        account_age_days = random.randint(1, 2000)
+
+        writer.writerow([
+            transaction_id,
+            amount,
+            timestamp,
+            merchant_category,
+            account_age_days
+        ])
 
 print(f"{filename} generated.")

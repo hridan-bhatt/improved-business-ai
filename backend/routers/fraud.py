@@ -4,6 +4,7 @@ from core.security import get_current_user
 from database import get_db
 from services.fraud_service import get_fraud_insights, get_fraud_chart_data, upload_fraud_csv, get_fraud_status
 from services.explainability_engine import explain_transaction
+from services.recommendation_engine import get_fraud_recommendations
 
 router = APIRouter(prefix="/fraud", tags=["fraud"])
 
@@ -37,6 +38,11 @@ def clear_fraud_data(user=Depends(get_current_user), db: Session = Depends(get_d
     except Exception as e:
         db.rollback()
         return {"message": f"Error clearing data: {str(e)}"}
+
+
+@router.get("/recommendations")
+def fraud_recommendations(user=Depends(get_current_user)):
+    return get_fraud_recommendations()
 
 
 @router.get("/explain/{transaction_id}")

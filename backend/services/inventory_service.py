@@ -103,10 +103,33 @@ def process_inventory_csv(file: UploadFile, db: Session) -> Dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse CSV file: {str(e)}")
 
+    # Normalize column names: lowercase + strip whitespace
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    # Accept common column name aliases
+    col_aliases = {
+        'item_name': ['item_name', 'name', 'product', 'product_name', 'item', 'sku'],
+        'category':  ['category', 'cat', 'type', 'department', 'group'],
+        'quantity':  ['quantity', 'qty', 'stock', 'count', 'units', 'on_hand'],
+        'price':     ['price', 'cost', 'unit_price', 'value', 'amount'],
+    }
+    rename_map = {}
+    for canonical, aliases in col_aliases.items():
+        if canonical not in df.columns:
+            for alias in aliases:
+                if alias in df.columns:
+                    rename_map[alias] = canonical
+                    break
+    if rename_map:
+        df = df.rename(columns=rename_map)
+
     required_cols = {'item_name', 'category', 'quantity', 'price'}
-    if not required_cols.issubset(set(df.columns)):
-        missing = required_cols - set(df.columns)
-        raise HTTPException(status_code=400, detail=f"Missing required columns: {missing}")
+    missing = required_cols - set(df.columns)
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required columns: {missing}. Expected: item_name, category, quantity, price"
+        )
 
     df = df.dropna(subset=['item_name', 'category'])
     df['quantity'] = pd.to_numeric(df['quantity'], errors='coerce').fillna(0).astype(int)
