@@ -1,27 +1,137 @@
-import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, PieChart, Pie, Cell } from 'recharts'
-import { Receipt, CheckCircle2 } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { motion, useMotionValue, useTransform, useSpring, AnimatePresence } from 'framer-motion'
+import {
+  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip,
+  PieChart, Pie, Cell, LineChart, Line, CartesianGrid,
+} from 'recharts'
+import {
+  Receipt, CheckCircle2, TrendingUp, TrendingDown,
+  DollarSign, Tag, ArrowUpRight, BarChart3, RefreshCw,
+} from 'lucide-react'
 import { expenseApi } from './services/api'
 import useModuleStatus from '../../hooks/useModuleStatus'
-import Card from '../../components/Card'
-import PageHeader from '../../components/PageHeader'
 import ModuleLayout from '../../components/module/ModuleLayout'
 import PreInsightLayout from '../../components/module/PreInsightLayout'
-import StatsGrid from '../../components/module/StatsGrid'
 import CsvUpload from '../../components/CsvUpload'
 import AIRecommendations from '../../components/AIRecommendations'
 import { useAuth } from '../../context/AuthContext'
 
-const COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4']
+const ACCENT = '#38AAF8'
+const COLORS = ['#00D4FF', '#38AAF8', '#34D399', '#20D2BA', '#4ADE80', '#A78BFA', '#F472B6']
 
 type ChartItem = { name: string; value: number }
 type TrendItem = { month: string; amount: number }
 type Stats = { total: number; trend?: string; trend_percent?: number }
 
-const unlockVariants = {
-  hidden: { opacity: 0, y: 24, filter: 'blur(8px)' },
-  visible: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } },
+/* ── 3D Tilt ─────────────────────────────────────────────── */
+function TiltCard({ children, style = {}, className = '' }: {
+  children: React.ReactNode; style?: React.CSSProperties; className?: string
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const x = useMotionValue(0); const y = useMotionValue(0)
+  const rotateX = useSpring(useTransform(y, [-0.5, 0.5], [6, -6]), { stiffness: 400, damping: 40 })
+  const rotateY = useSpring(useTransform(x, [-0.5, 0.5], [-6, 6]), { stiffness: 400, damping: 40 })
+  const glowX = useTransform(x, [-0.5, 0.5], [0, 100])
+  const glowY = useTransform(y, [-0.5, 0.5], [0, 100])
+  const handleMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!ref.current) return
+    const r = ref.current.getBoundingClientRect()
+    x.set((e.clientX - r.left) / r.width - 0.5)
+    y.set((e.clientY - r.top) / r.height - 0.5)
+  }, [x, y])
+  return (
+    <motion.div
+      ref={ref}
+      style={{ rotateX, rotateY, transformStyle: 'preserve-3d', ...style }}
+      onMouseMove={handleMove}
+      onMouseLeave={() => { x.set(0); y.set(0) }}
+      className={className}
+    >
+      <motion.div className="pointer-events-none absolute inset-0 rounded-2xl z-10"
+        style={{
+          background: useTransform([glowX, glowY], ([gx, gy]) =>
+            `radial-gradient(circle at ${gx}% ${gy}%, rgba(56,170,248,0.08) 0%, transparent 55%)`)
+        }} />
+      {children}
+    </motion.div>
+  )
+}
+
+/* ── Stat Card ────────────────────────────────────────────── */
+function StatCard({ label, value, sub, color, icon: Icon, delay = 0 }: {
+  label: string; value: React.ReactNode; sub?: React.ReactNode
+  color: string; icon: React.FC<{ className?: string; style?: React.CSSProperties }>; delay?: number
+}) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ delay, ease: [0.22, 1, 0.36, 1], duration: 0.55 }}
+        className="relative overflow-hidden rounded-2xl p-5"
+        style={{
+          background: 'rgb(var(--ds-bg-surface))',
+          border: `1px solid ${color}18`,
+          boxShadow: `0 0 30px ${color}06`,
+        }}
+      >
+        <div className="pointer-events-none absolute -right-5 -top-5 h-20 w-20 rounded-full blur-3xl"
+          style={{ background: `${color}18` }} />
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
+            style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+            {label}
+          </p>
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg"
+            style={{ background: `${color}10`, border: `1px solid ${color}20` }}>
+            <Icon className="h-3.5 w-3.5" style={{ color }} />
+          </div>
+        </div>
+        <div className="text-2xl font-black"
+          style={{ color: 'rgb(var(--ds-text-primary))', fontFamily: 'var(--ds-font-display)' }}>
+          {value}
+        </div>
+        {sub && <div className="mt-1 text-xs" style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>{sub}</div>}
+      </motion.div>
+  )
+}
+
+/* ── Tooltip ─────────────────────────────────────────────── */
+const ChartTip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="rounded-xl px-3 py-2 text-xs shadow-xl"
+      style={{
+      background: 'rgb(var(--ds-bg-surface))', border: `1px solid ${ACCENT}25`,
+          color: 'rgb(var(--ds-text-primary))', fontFamily: 'var(--ds-font-mono)',
+          boxShadow: 'var(--ds-surface-shadow)',
+        }}>
+        {label && <p className="mb-1" style={{ color: 'rgb(var(--ds-text-muted))' }}>{label}</p>}
+      {payload.map((p: any, i: number) => (
+        <p key={i} style={{ color: p.fill || p.stroke || ACCENT }}>
+          {p.name || 'Value'}: <strong>${Number(p.value).toLocaleString()}</strong>
+        </p>
+      ))}
+    </div>
+  )
+}
+
+/* ── Animated donut center ──────────────────────────────── */
+function DonutCenter({ total }: { total: number }) {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+      <p className="text-[10px] uppercase tracking-[0.12em]"
+        style={{ color: 'rgba(108,128,162,0.7)', fontFamily: 'var(--ds-font-mono)' }}>TOTAL</p>
+      <p className="text-2xl font-black tabular-nums"
+        style={{ color: ACCENT, fontFamily: 'var(--ds-font-display)' }}>
+        ${total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total.toLocaleString()}
+      </p>
+    </div>
+  )
+}
+
+const reveal = {
+  hidden: { opacity: 0, y: 22, filter: 'blur(6px)' },
+  visible: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.58, ease: [0.16, 1, 0.3, 1] } },
 }
 
 export default function ExpenseSense() {
@@ -30,219 +140,351 @@ export default function ExpenseSense() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isClearing, setIsClearing] = useState(false)
+  const [activeSlice, setActiveSlice] = useState<number | null>(null)
   const { hasData, loading, refreshStatus } = useModuleStatus('expense')
   const { token } = useAuth()
 
-  const loadData = () => {
+  const loadData = useCallback(() => {
     expenseApi.summary().then((data) => {
-      setChartData(data.by_category)
+      setChartData(data.by_category?.length ? data.by_category : null)
       setStats({ total: data.total, trend: data.trend, trend_percent: data.trend_percent })
-    }).catch(() => { })
-    expenseApi.trends().then(setTrends).catch(() => { })
-  }
+    }).catch(() => {})
+    expenseApi.trends().then(setTrends).catch(() => {})
+  }, [])
 
-  useEffect(() => {
-    if (hasData) loadData()
-  }, [hasData])
+  useEffect(() => { if (hasData) loadData() }, [hasData, loadData])
 
   const handleFileUpload = async (file: File) => {
     setError(null)
     try {
       const data = await expenseApi.upload(file)
       const byCategory: ChartItem[] = (data.labels || []).map((label, i) => ({
-        name: label,
-        value: data.values?.[i] ?? 0,
+        name: label, value: data.values?.[i] ?? 0,
       }))
       setChartData(byCategory.length ? byCategory : null)
-      setStats({
-        total: data.total ?? 0,
-        trend: (data as { trend?: string }).trend,
-        trend_percent: (data as { trend_percent?: number }).trend_percent,
-      })
-      if (data.trends?.length) {
-        setTrends(data.trends)
-      } else if (data.labels?.length && data.values?.length) {
-        setTrends([{ month: 'Upload', amount: data.total ?? 0 }])
-      } else {
-        setTrends(null)
-      }
+      setStats({ total: data.total ?? 0, trend: (data as any).trend, trend_percent: (data as any).trend_percent })
+      setTrends(data.trends?.length ? data.trends : null)
       await refreshStatus()
       return data
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
-      setChartData(null)
-      setTrends(null)
-      setStats(null)
+      setChartData(null); setTrends(null); setStats(null)
     }
   }
 
   const handleClearAll = async () => {
-    if (!window.confirm("Are you sure you want to clear current data and start new analysis?")) return;
-
-    setIsClearing(true);
+    if (!window.confirm('Clear all expense data?')) return
+    setIsClearing(true)
     try {
-      await expenseApi.clear();
-      setChartData(null);
-      setTrends(null);
-      setStats(null);
-      setError(null);
-      await refreshStatus();
-      alert("Analysis reset successfully.");
-    } catch (err) {
-      console.error(err);
-      alert("Failed to reset analysis.");
-    } finally {
-      setIsClearing(false);
-    }
-  };
+      await expenseApi.clear()
+      setChartData(null); setTrends(null); setStats(null); setError(null)
+      await refreshStatus()
+    } catch { alert('Failed to reset.') } finally { setIsClearing(false) }
+  }
 
-  // ─── Loading State ──────────────────────────────────────────────
-  if (loading) {
-    return (
-      <ModuleLayout>
-        <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-ds-text-muted border-t-blue-400" />
+  if (loading) return (
+    <ModuleLayout>
+      <div className="flex h-64 items-center justify-center">
+        <div className="relative">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-transparent"
+            style={{ borderTopColor: ACCENT }} />
+          <div className="absolute inset-0 h-10 w-10 animate-ping rounded-full border border-transparent"
+            style={{ borderTopColor: `${ACCENT}40` }} />
         </div>
-      </ModuleLayout>
-    )
-  }
+      </div>
+    </ModuleLayout>
+  )
 
-  // ─── Pre-Insight State ────────────────────────────────────────────
-  if (!hasData) {
-    return (
-      <ModuleLayout>
-        <PreInsightLayout
-          moduleTitle="Expense Sense"
-          tagline="Transform raw spending data into strategic intelligence."
-          bullets={[
-            'Category-wise breakdown of all expenses',
-            'Monthly spending trend analysis',
-            'Spending direction and anomaly detection',
-          ]}
-          icon={Receipt}
-          accentColor="#3b82f6"
-          lockedMetrics={['Total Expense', 'Trend Direction', 'Category Count']}
-          csvColumns={['category', 'amount', 'month']}
-          onUpload={handleFileUpload}
-        />
-      </ModuleLayout>
-    )
-  }
+  if (!hasData) return (
+    <ModuleLayout>
+      <PreInsightLayout
+        moduleTitle="Expense Sense"
+        tagline="Transform raw spending data into strategic intelligence."
+        bullets={[
+          'Category-wise breakdown of all expenses',
+          'Monthly spending trend analysis',
+          'Spending direction and anomaly detection',
+        ]}
+        icon={Receipt}
+        accentColor={ACCENT}
+        lockedMetrics={['Total Expense', 'Trend Direction', 'Category Count']}
+        csvColumns={['category', 'amount', 'month']}
+        onUpload={handleFileUpload}
+      />
+    </ModuleLayout>
+  )
 
-  // ─── Data View (Unlocked) ─────────────────────────────────────────
+  const trendUp = stats?.trend === 'up'
+  const trendColor = trendUp ? '#FBBF24' : '#34D399'
+  const total = stats?.total ?? 0
+
   return (
     <ModuleLayout>
-      <motion.div initial="hidden" animate="visible" variants={unlockVariants}>
-        <PageHeader
-          title="Expense Sense"
-          action={
-            <div className="flex items-center gap-3">
-              {hasData && (
-                <button
-                  onClick={handleClearAll}
-                  disabled={isClearing}
-                  className="inline-flex items-center justify-center rounded-lg border border-red-500/30 bg-transparent px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/10 disabled:opacity-50"
-                >
-                  {isClearing ? 'Clearing...' : 'Start New Analysis'}
-                </button>
-              )}
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/15 px-3 py-1 text-xs font-semibold text-blue-400 ring-1 ring-blue-500/30">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Insights Active
-              </span>
-              <CsvUpload
-                onUpload={handleFileUpload}
-                title="Upload Expenses"
-                description="Process CSV records"
-              />
+      {/* ── Header ────────────────────────────────────── */}
+      <motion.div initial="hidden" animate="visible" variants={reveal}
+        className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl"
+              style={{
+                background: `${ACCENT}12`, border: `1px solid ${ACCENT}28`,
+                boxShadow: `0 0 16px ${ACCENT}18`,
+              }}>
+              <Receipt className="h-4.5 w-4.5" style={{ color: ACCENT }} />
             </div>
-          }
-        />
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.18em]"
+                style={{ color: ACCENT, fontFamily: 'var(--ds-font-mono)', opacity: 0.7 }}>
+                Analytics Module
+              </p>
+              <h1 className="text-2xl font-black leading-tight md:text-3xl"
+                style={{
+                  fontFamily: 'var(--ds-font-display)',
+                    background: `linear-gradient(135deg, rgb(var(--ds-text-primary)) 40%, ${ACCENT} 100%)`,
+                  WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+                }}>
+                Expense Sense
+              </h1>
+            </div>
+          </div>
+          <p className="text-xs" style={{ color: 'rgba(108,128,162,0.8)', fontFamily: 'var(--ds-font-mono)' }}>
+            Spending analytics · AI-powered insights · Category intelligence
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold"
+            style={{
+              background: `${ACCENT}10`, border: `1px solid ${ACCENT}22`,
+              color: ACCENT, fontFamily: 'var(--ds-font-mono)', letterSpacing: '0.08em',
+            }}>
+            <CheckCircle2 className="h-3 w-3" /> INSIGHTS ACTIVE
+          </span>
+          <motion.button onClick={loadData}
+            className="flex h-8 w-8 items-center justify-center rounded-xl transition-all"
+            style={{ background: 'rgb(var(--ds-bg-elevated))', border: '1px solid rgb(var(--ds-border) / 0.12)', color: 'rgb(var(--ds-text-muted))' }}
+            whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }} title="Refresh data">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </motion.button>
+          {hasData && (
+            <button onClick={handleClearAll} disabled={isClearing}
+              className="rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] transition-all disabled:opacity-50"
+              style={{ border: '1px solid rgba(248,70,70,0.22)', color: 'rgba(248,70,70,0.75)', fontFamily: 'var(--ds-font-mono)', background: 'transparent' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(248,70,70,0.07)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}>
+              {isClearing ? 'Clearing…' : 'Reset'}
+            </button>
+          )}
+          <CsvUpload onUpload={handleFileUpload} title="Upload Expenses" description="category, amount, month" />
+        </div>
       </motion.div>
 
       {error && (
-        <div className="rounded-lg bg-ds-accent-danger/10 border border-ds-accent-danger/30 px-4 py-3 text-sm text-ds-accent-danger">
+        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+          className="rounded-xl px-4 py-3 text-sm"
+          style={{ background: 'rgba(248,70,70,0.07)', border: '1px solid rgba(248,70,70,0.22)', color: '#f84646' }}>
           {error}
-        </div>
+        </motion.div>
       )}
 
-      <motion.div initial="hidden" animate="visible" variants={unlockVariants} transition={{ delay: 0.1 }}>
-        {/* Stats row */}
-        <StatsGrid columns={3}>
-          <Card className="unlock-glow">
-            <h3 className="mb-2 text-sm font-medium text-ds-text-muted">Total expense</h3>
-            <p className="text-3xl font-bold text-ds-text-primary">{stats?.total ?? 0}</p>
-          </Card>
-          <Card className="unlock-glow">
-            <h3 className="mb-2 text-sm font-medium text-ds-text-muted">Trend</h3>
-            {stats?.trend != null && stats.trend_percent != null ? (
-              <div className="flex items-center gap-2">
-                <span className={stats.trend === 'up' ? 'text-amber-400' : 'text-emerald-400'}>
-                  {stats.trend === 'up' ? '↑' : '↓'} {Math.abs(stats.trend_percent)}%
-                </span>
-                <span className="text-sm text-ds-text-muted">vs previous</span>
-              </div>
-            ) : (
-              <p className="text-lg text-ds-text-muted">—</p>
-            )}
-          </Card>
-          <Card className="unlock-glow">
-            <h3 className="mb-2 text-sm font-medium text-ds-text-muted">Categories</h3>
-            <p className="text-3xl font-bold text-ds-text-primary">{chartData?.length ?? 0}</p>
-          </Card>
-        </StatsGrid>
+      {/* ── Stats row ─────────────────────────────────── */}
+      <motion.div initial="hidden" animate="visible" variants={reveal} transition={{ delay: 0.08 }}
+        className="grid gap-4 sm:grid-cols-3">
+        <StatCard label="Total Expenses" icon={DollarSign} color={ACCENT} delay={0.1}
+          value={<span style={{ color: ACCENT }}>${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>}
+        />
+        <StatCard label="Trend Direction" icon={trendUp ? TrendingUp : TrendingDown}
+          color={trendColor} delay={0.16}
+          value={
+            stats?.trend_percent != null ? (
+              <span style={{ color: trendColor }}>
+                {trendUp ? '↑' : '↓'} {Math.abs(stats.trend_percent).toFixed(1)}%
+              </span>
+            ) : <span style={{ color: 'rgba(180,196,224,0.4)' }}>—</span>
+          }
+          sub="vs previous period"
+        />
+        <StatCard label="Categories" icon={Tag} color="#A78BFA" delay={0.22}
+          value={<span style={{ color: '#A78BFA' }}>{chartData?.length ?? 0}</span>}
+          sub="unique spend categories"
+        />
       </motion.div>
 
-      {/* Charts */}
-      <motion.div
-        className="grid gap-6 lg:grid-cols-2"
-        initial="hidden"
-        animate="visible"
-        variants={unlockVariants}
-        transition={{ delay: 0.2 }}
-      >
-        <Card>
-          <h3 className="mb-4 text-sm font-medium text-ds-text-muted">By category</h3>
-          {chartData?.length ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }} className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                    {chartData.map((_entry, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </motion.div>
-          ) : (
-            <div className="flex h-64 items-center justify-center rounded-lg bg-ds-bg-base/50 text-sm text-ds-text-muted">
-              No category data
-            </div>
-          )}
-        </Card>
+      {/* ── Charts ────────────────────────────────────── */}
+      <motion.div initial="hidden" animate="visible" variants={reveal} transition={{ delay: 0.18 }}
+        className="grid gap-6 lg:grid-cols-2">
 
-        <Card>
-          <h3 className="mb-4 text-sm font-medium text-ds-text-muted">Monthly trend</h3>
-          {trends?.length ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }} className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={trends}>
-                  <XAxis dataKey="month" stroke="#94a3b8" />
-                  <YAxis stroke="#94a3b8" />
-                  <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)' }} />
-                  <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </motion.div>
-          ) : (
-            <div className="flex h-64 items-center justify-center rounded-lg bg-ds-bg-base/50 text-sm text-ds-text-muted">
-              No trend data
+          {/* Donut */}
+          <TiltCard
+            className="relative overflow-hidden rounded-2xl p-6"
+            style={{ background: 'rgb(var(--ds-bg-surface))', border: `1px solid ${ACCENT}12`, boxShadow: 'var(--ds-card-shadow)' }}
+          >
+            <div className="pointer-events-none absolute -left-6 -top-6 h-28 w-28 rounded-full blur-3xl"
+              style={{ background: `${ACCENT}08` }} />
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
+                style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                BY CATEGORY
+              </p>
+              <BarChart3 className="h-3.5 w-3.5" style={{ color: 'rgb(var(--ds-text-muted))' }} />
             </div>
-          )}
-          </Card>
+            {chartData?.length ? (
+              <>
+                <div className="relative h-56">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={chartData} dataKey="value" nameKey="name"
+                        cx="50%" cy="50%"
+                        innerRadius={62} outerRadius={90}
+                        paddingAngle={3} strokeWidth={0}
+                        onMouseEnter={(_, idx) => setActiveSlice(idx)}
+                        onMouseLeave={() => setActiveSlice(null)}
+                      >
+                        {chartData.map((_, i) => (
+                          <Cell
+                            key={i}
+                            fill={COLORS[i % COLORS.length]}
+                            opacity={activeSlice === null || activeSlice === i ? 1 : 0.45}
+                            style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<ChartTip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <DonutCenter total={total} />
+                </div>
+                {/* Legend */}
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+                  {chartData.slice(0, 6).map((item, i) => (
+                    <button
+                      key={i}
+                      className="flex items-center gap-1.5 transition-opacity"
+                      style={{ opacity: activeSlice === null || activeSlice === i ? 1 : 0.45 }}
+                      onMouseEnter={() => setActiveSlice(i)}
+                      onMouseLeave={() => setActiveSlice(null)}
+                    >
+                      <div className="h-2 w-2 rounded-full"
+                        style={{ background: COLORS[i % COLORS.length] }} />
+                      <span className="text-[11px]"
+                        style={{ color: 'rgb(var(--ds-text-secondary))', fontFamily: 'var(--ds-font-mono)' }}>
+                        {item.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="flex h-56 items-center justify-center text-xs"
+                style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                No category data
+              </div>
+            )}
+          </TiltCard>
+
+          {/* Bar trend chart */}
+          <TiltCard
+            className="relative overflow-hidden rounded-2xl p-6"
+            style={{ background: 'rgb(var(--ds-bg-surface))', border: `1px solid ${ACCENT}12`, boxShadow: 'var(--ds-card-shadow)' }}
+          >
+            <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full blur-3xl"
+              style={{ background: `${ACCENT}08` }} />
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
+                style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                MONTHLY TREND
+              </p>
+              <ArrowUpRight className="h-3.5 w-3.5" style={{ color: 'rgb(var(--ds-text-muted))' }} />
+            </div>
+            {trends?.length ? (
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={trends} barSize={22} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="expGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={ACCENT} stopOpacity={0.95} />
+                        <stop offset="100%" stopColor={ACCENT} stopOpacity={0.25} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="rgb(var(--ds-border) / 0.07)" strokeDasharray="4 4" vertical={false} />
+                    <XAxis dataKey="month"
+                      stroke="transparent"
+                      tick={{ fontSize: 10, fontFamily: 'var(--ds-font-mono)', fill: 'rgb(var(--ds-text-muted))' }}
+                      tickLine={false} axisLine={false} />
+                    <YAxis
+                      stroke="transparent"
+                      tick={{ fontSize: 10, fontFamily: 'var(--ds-font-mono)', fill: 'rgb(var(--ds-text-muted))' }}
+                      tickLine={false} axisLine={false}
+                      tickFormatter={v => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                    />
+                    <Tooltip content={<ChartTip />} cursor={{ fill: 'rgba(56,170,248,0.05)' }} />
+                    <Bar dataKey="amount" fill="url(#expGrad)" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="flex h-56 items-center justify-center text-xs"
+                style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                No trend data
+              </div>
+            )}
+          </TiltCard>
         </motion.div>
+
+        {/* ── Category breakdown table ───────────────────── */}
+        {chartData?.length ? (
+          <motion.div initial="hidden" animate="visible" variants={reveal} transition={{ delay: 0.26 }}
+            className="relative overflow-hidden rounded-2xl p-6"
+            style={{ background: 'rgb(var(--ds-bg-surface))', border: `1px solid rgb(var(--ds-border) / 0.08)`, boxShadow: 'var(--ds-card-shadow)' }}>
+            <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.14em]"
+              style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+              CATEGORY BREAKDOWN
+            </p>
+            <div className="space-y-2.5">
+              {chartData.map((item, i) => {
+                const pct = total > 0 ? (item.value / total) * 100 : 0
+                const color = COLORS[i % COLORS.length]
+                return (
+                  <motion.div
+                    key={item.name}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3 + i * 0.05 }}
+                    className="flex items-center gap-3"
+                  >
+                    <div className="w-28 shrink-0 text-xs truncate"
+                      style={{ color: 'rgb(var(--ds-text-secondary))', fontFamily: 'var(--ds-font-sans)' }}>
+                      {item.name}
+                    </div>
+                    <div className="flex-1 h-1.5 overflow-hidden rounded-full"
+                      style={{ background: 'rgb(var(--ds-border) / 0.1)' }}>
+                      <motion.div
+                        className="h-full rounded-full"
+                        style={{ background: color, boxShadow: `0 0 6px ${color}50` }}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.8, delay: 0.35 + i * 0.04, ease: [0.22, 1, 0.36, 1] }}
+                      />
+                    </div>
+                    <div className="w-20 shrink-0 text-right text-xs tabular-nums"
+                      style={{ color, fontFamily: 'var(--ds-font-mono)' }}>
+                      ${item.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </div>
+                    <div className="w-10 shrink-0 text-right text-[10px] tabular-nums"
+                      style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                      {pct.toFixed(1)}%
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </motion.div>
+        ) : null}
+
+      <motion.div initial="hidden" animate="visible" variants={reveal} transition={{ delay: 0.32 }}>
         <AIRecommendations endpoint="/expense/recommendations" token={token} />
-      </ModuleLayout>
-    )
-  }
+      </motion.div>
+    </ModuleLayout>
+  )
+}

@@ -45,6 +45,20 @@ body {
   display: block;
 }
 
+/* ── Glass card (used by Card.tsx) ── */
+.glass-card {
+  background: rgb(var(--ds-bg-surface));
+  border: 1px solid rgba(0, 212, 255, 0.1);
+  border-radius: var(--ds-radius-lg);
+  box-shadow: var(--ds-card-shadow);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+}
+.glass-card:hover {
+  border-color: rgba(0, 212, 255, 0.18);
+  box-shadow: var(--ds-surface-shadow), 0 0 20px rgba(0, 212, 255, 0.06);
+  transform: translateY(-2px);
+}
+
 /* ── Surface cards ── */
 .surface-card {
   background: rgb(var(--ds-bg-surface));
@@ -213,13 +227,29 @@ body {
 .reveal-underline:hover::after { transform: scaleX(1); }
 
 /* ── Scrollbar ── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--ds-accent) / 0.22);
+  background: rgb(var(--ds-border) / 0.25);
+  border-radius: 99px;
+  transition: background 0.2s;
+}
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--ds-accent) / 0.45); }
+
+/* ── Inventory scrollbar — thin, pill-shaped, themed ── */
+.inv-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--ds-border) / 0.2) transparent;
+}
+.inv-scroll::-webkit-scrollbar { width: 3px; }
+.inv-scroll::-webkit-scrollbar-track { background: transparent; margin: 4px 0; }
+.inv-scroll::-webkit-scrollbar-thumb {
+  background: rgb(var(--ds-border) / 0.2);
   border-radius: 99px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgb(var(--ds-accent) / 0.42); }
+.inv-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(52, 211, 153, 0.45);
+}
 
 /* ── Smooth section transitions ── */
 section { transition: background-color 0.45s ease; }

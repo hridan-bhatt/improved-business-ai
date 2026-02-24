@@ -80,10 +80,14 @@ export default function UploadPanel({
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onClick={() => fileInputRef.current?.click()}
-                className={`group relative cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition-all duration-300 ${isDragging
-                        ? 'border-ds-accent bg-ds-accent/5 shadow-[0_0_30px_rgba(56,189,248,0.12)]'
-                        : 'border-ds-text-muted/20 hover:border-ds-accent/50 hover:bg-ds-bg-surface/50'
-                    }`}
+              className={`group relative cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition-all duration-300 ${isDragging
+                      ? 'shadow-[0_0_30px_rgba(56,189,248,0.12)]'
+                      : ''
+                  }`}
+              style={{
+                background: isDragging ? 'rgba(56,189,248,0.06)' : 'rgb(var(--ds-bg-elevated))',
+                borderColor: isDragging ? 'rgb(var(--ds-accent))' : 'rgb(var(--ds-border) / 0.3)',
+              }}
                 whileHover={{ scale: 1.005 }}
                 transition={{ duration: 0.2 }}
             >
@@ -104,8 +108,8 @@ export default function UploadPanel({
 
                 <div className="relative flex flex-col items-center gap-3">
                     <motion.div
-                        className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-colors duration-300 ${isDragging ? 'bg-ds-accent/15' : 'bg-ds-bg-surface'
-                            }`}
+                      className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-colors duration-300`}
+                          style={{ background: isDragging ? 'rgba(56,189,248,0.15)' : 'rgb(var(--ds-bg-surface))' }}
                         animate={isDragging ? { scale: [1, 1.08, 1] } : {}}
                         transition={{ duration: 0.6, repeat: isDragging ? Infinity : 0 }}
                     >
@@ -132,7 +136,7 @@ export default function UploadPanel({
             </motion.div>
 
             {/* CSV format info */}
-            <div className="rounded-xl bg-ds-bg-surface/60 px-4 py-3">
+              <div className="rounded-xl px-4 py-3" style={{ background: 'rgb(var(--ds-bg-elevated))' }}>
                 <div className="flex items-center gap-2 text-xs font-medium text-ds-text-secondary">
                     <FileSpreadsheet className="h-3.5 w-3.5" />
                     Expected CSV columns

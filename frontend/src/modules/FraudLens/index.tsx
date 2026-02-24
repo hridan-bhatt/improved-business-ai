@@ -1,63 +1,173 @@
-import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
-import { Shield, CheckCircle2 } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { motion, useMotionValue, useTransform, useSpring } from 'framer-motion'
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts'
+import { Shield, CheckCircle2, AlertTriangle, Activity, Eye, Scan, RefreshCw } from 'lucide-react'
 import { fraudApi } from './services/api'
 import useModuleStatus from '../../hooks/useModuleStatus'
-import Card from '../../components/Card'
-import PageHeader from '../../components/PageHeader'
 import ModuleLayout from '../../components/module/ModuleLayout'
 import PreInsightLayout from '../../components/module/PreInsightLayout'
-import StatsGrid from '../../components/module/StatsGrid'
 import CsvUpload from '../../components/CsvUpload'
 import AIRecommendations from '../../components/AIRecommendations'
 import { useAuth } from '../../context/AuthContext'
 
-const COLORS = { normal: '#3b82f6', fraud: '#f59e0b' }
+const ACCENT = '#20D2BA'
 
-function riskColor(pct: number): string {
-  if (pct < 20) return 'text-emerald-400'
-  if (pct <= 50) return 'text-amber-400'
-  return 'text-red-400'
+function riskColor(pct: number) {
+  if (pct < 20) return '#22c594'
+  if (pct <= 50) return '#fbbf24'
+  return '#f84646'
+}
+function riskLabel(pct: number) {
+  if (pct < 20) return 'LOW RISK'
+  if (pct <= 50) return 'MEDIUM'
+  return 'HIGH RISK'
 }
 
-function riskBg(pct: number): string {
-  if (pct < 20) return 'bg-emerald-500/20'
-  if (pct <= 50) return 'bg-amber-500/20'
-  return 'bg-red-500/20'
+/* ── 3D Tilt ─────────────────────────────────────────────── */
+function TiltCard({ children, style = {}, className = '' }: {
+  children: React.ReactNode; style?: React.CSSProperties; className?: string
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const x = useMotionValue(0); const y = useMotionValue(0)
+  const rotateX = useSpring(useTransform(y, [-0.5, 0.5], [6, -6]), { stiffness: 400, damping: 40 })
+  const rotateY = useSpring(useTransform(x, [-0.5, 0.5], [-6, 6]), { stiffness: 400, damping: 40 })
+  const glowX = useTransform(x, [-0.5, 0.5], [0, 100])
+  const glowY = useTransform(y, [-0.5, 0.5], [0, 100])
+  const handleMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!ref.current) return
+    const r = ref.current.getBoundingClientRect()
+    x.set((e.clientX - r.left) / r.width - 0.5)
+    y.set((e.clientY - r.top) / r.height - 0.5)
+  }, [x, y])
+  return (
+    <motion.div
+      ref={ref}
+      style={{ rotateX, rotateY, transformStyle: 'preserve-3d', ...style }}
+      onMouseMove={handleMove}
+      onMouseLeave={() => { x.set(0); y.set(0) }}
+      className={className}
+    >
+      <motion.div className="pointer-events-none absolute inset-0 rounded-2xl z-10"
+        style={{
+          background: useTransform([glowX, glowY], ([gx, gy]) =>
+            `radial-gradient(circle at ${gx}% ${gy}%, rgba(32,210,186,0.07) 0%, transparent 55%)`)
+        }} />
+      {children}
+    </motion.div>
+  )
 }
 
-const unlockVariants = {
-  hidden: { opacity: 0, y: 24, filter: 'blur(8px)' },
-  visible: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } },
+/* ── Animated threat ring ─────────────────────────────────── */
+function ThreatRing({ pct, color }: { pct: number; color: string }) {
+  const r = 52
+  const circ = 2 * Math.PI * r
+  return (
+    <svg width="140" height="140" viewBox="0 0 140 140">
+      {/* Outer decorative rings */}
+      <circle cx="70" cy="70" r={66} fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="1" strokeDasharray="4 4" />
+      {/* Track */}
+      <circle cx="70" cy="70" r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="9" />
+      {/* Progress arc */}
+      <motion.circle
+        cx="70" cy="70" r={r} fill="none"
+        stroke={color} strokeWidth="9" strokeLinecap="round"
+        strokeDasharray={circ}
+        initial={{ strokeDashoffset: circ }}
+        animate={{ strokeDashoffset: circ - (circ * pct) / 100 }}
+        transition={{ duration: 1.6, ease: [0.22, 1, 0.36, 1], delay: 0.4 }}
+        transform="rotate(-90 70 70)"
+        style={{ filter: `drop-shadow(0 0 8px ${color}) drop-shadow(0 0 16px ${color}55)` }}
+      />
+      {/* Tick marks */}
+      {Array.from({ length: 20 }).map((_, i) => {
+        const angle = (i / 20) * 360 - 90
+        const rad = (angle * Math.PI) / 180
+        const x1 = 70 + (r - 2) * Math.cos(rad)
+        const y1 = 70 + (r - 2) * Math.sin(rad)
+        const x2 = 70 + (r - 9) * Math.cos(rad)
+        const y2 = 70 + (r - 9) * Math.sin(rad)
+        return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
+          stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+      })}
+    </svg>
+  )
+}
+
+/* ── Scan line animation ──────────────────────────────────── */
+function ScanLines() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl opacity-30">
+      {[0, 1, 2].map((i) => (
+        <motion.div
+          key={i}
+          className="absolute left-0 right-0 h-px"
+          style={{ background: 'linear-gradient(90deg, transparent, rgba(32,210,186,0.4), transparent)' }}
+          initial={{ top: '-1px' }}
+          animate={{ top: '100%' }}
+          transition={{
+            duration: 3,
+            delay: i * 1.1,
+            repeat: Infinity,
+            repeatDelay: 0.5,
+            ease: 'linear',
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+/* ── Tooltip ─────────────────────────────────────────────── */
+const ChartTip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="rounded-xl px-3 py-2 text-xs"
+      style={{
+      background: 'rgb(var(--ds-bg-surface))', border: `1px solid ${ACCENT}25`,
+          color: 'rgb(var(--ds-text-primary))', fontFamily: 'var(--ds-font-mono)',
+          boxShadow: 'var(--ds-surface-shadow)',
+        }}>
+        {label && <p className="mb-1" style={{ color: 'rgb(var(--ds-text-muted))' }}>{label}</p>}
+      {payload.map((p: any, i: number) => (
+        <p key={i} style={{ color: p.fill || p.color || ACCENT }}>
+          {p.name}: <strong>{p.value?.toLocaleString()}</strong>
+        </p>
+      ))}
+    </div>
+  )
+}
+
+const reveal = {
+  hidden: { opacity: 0, y: 22, filter: 'blur(6px)' },
+  visible: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.58, ease: [0.16, 1, 0.3, 1] } },
 }
 
 export default function FraudLens() {
   const [pieData, setPieData] = useState<{ name: string; value: number }[] | null>(null)
   const [fraudCount, setFraudCount] = useState<number | null>(null)
   const [normalCount, setNormalCount] = useState<number | null>(null)
-  const [fraudPercentage, setFraudPercentage] = useState<number | null>(null)
+  const [fraudPct, setFraudPct] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isClearing, setIsClearing] = useState(false)
   const { hasData, loading, refreshStatus } = useModuleStatus('fraud')
   const { token } = useAuth()
 
-  const loadData = () => {
+  const loadData = useCallback(() => {
     fraudApi.insights().then((data) => {
       setFraudCount(data.anomalies_detected)
       setNormalCount(data.total_transactions - data.anomalies_detected)
-      const pct = Math.round((data.anomalies_detected / data.total_transactions) * 100)
-      setFraudPercentage(pct)
+      const pct = data.total_transactions > 0
+        ? Math.round((data.anomalies_detected / data.total_transactions) * 100)
+        : 0
+      setFraudPct(pct)
       setPieData([
         { name: 'Normal', value: data.total_transactions - data.anomalies_detected },
         { name: 'Fraud', value: data.anomalies_detected },
       ])
-    }).catch(() => { })
-  }
+    }).catch(() => {})
+  }, [])
 
-  useEffect(() => {
-    if (hasData) loadData()
-  }, [hasData])
+  useEffect(() => { if (hasData) loadData() }, [hasData, loadData])
 
   const handleFileUpload = async (file: File) => {
     setError(null)
@@ -65,7 +175,7 @@ export default function FraudLens() {
       const data = await fraudApi.upload(file)
       setFraudCount(data.fraud_count)
       setNormalCount(data.normal_count)
-      setFraudPercentage(data.fraud_percentage)
+      setFraudPct(data.fraud_percentage)
       setPieData([
         { name: 'Normal', value: data.normal_count },
         { name: 'Fraud', value: data.fraud_count },
@@ -74,164 +184,357 @@ export default function FraudLens() {
       return data
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
-      setPieData(null)
-      setFraudCount(null)
-      setNormalCount(null)
-      setFraudPercentage(null)
+      setPieData(null); setFraudCount(null); setNormalCount(null); setFraudPct(null)
     }
   }
 
   const handleClearAll = async () => {
-    if (!window.confirm("Are you sure you want to clear current data and start new analysis?")) return;
-
-    setIsClearing(true);
+    if (!window.confirm('Clear all fraud data?')) return
+    setIsClearing(true)
     try {
-      await fraudApi.clear();
-      setPieData(null);
-      setFraudCount(null);
-      setNormalCount(null);
-      setFraudPercentage(null);
-      setError(null);
-      await refreshStatus();
-      alert("Analysis reset successfully.");
-    } catch (err) {
-      console.error(err);
-      alert("Failed to reset analysis.");
-    } finally {
-      setIsClearing(false);
-    }
-  };
+      await fraudApi.clear()
+      setPieData(null); setFraudCount(null); setNormalCount(null); setFraudPct(null); setError(null)
+      await refreshStatus()
+    } catch { alert('Failed to reset.') } finally { setIsClearing(false) }
+  }
 
-  // ─── Loading State ──────────────────────────────────────────────
-  if (loading) {
-    return (
-      <ModuleLayout>
-        <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-ds-text-muted border-t-teal-400" />
+  if (loading) return (
+    <ModuleLayout>
+      <div className="flex h-64 items-center justify-center">
+        <div className="relative">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-transparent"
+            style={{ borderTopColor: ACCENT }} />
         </div>
-      </ModuleLayout>
-    )
-  }
+      </div>
+    </ModuleLayout>
+  )
 
-  // ─── Pre-Insight State ────────────────────────────────────────────
-  if (!hasData) {
-    return (
-      <ModuleLayout>
-        <PreInsightLayout
-          moduleTitle="Fraud Lens"
-          tagline="Unmask hidden threats in your transaction data."
-          bullets={[
-            'Anomaly detection across all transactions',
-            'Risk scoring and fraud distribution analysis',
-            'Normal vs fraudulent transaction breakdown',
-          ]}
-          icon={Shield}
-          accentColor="#2DD4BF"
-          lockedMetrics={['Fraud Count', 'Normal Count', 'Risk Level']}
-          csvColumns={['transaction_id', 'amount', 'is_fraud']}
-          onUpload={handleFileUpload}
-        />
-      </ModuleLayout>
-    )
-  }
+  if (!hasData) return (
+    <ModuleLayout>
+      <PreInsightLayout
+        moduleTitle="Fraud Lens"
+        tagline="Unmask hidden threats in your transaction data."
+        bullets={[
+          'Anomaly detection across all transactions',
+          'Risk scoring and fraud distribution analysis',
+          'Normal vs fraudulent transaction breakdown',
+        ]}
+        icon={Shield} accentColor={ACCENT}
+        lockedMetrics={['Fraud Count', 'Normal Count', 'Risk Level']}
+        csvColumns={['transaction_id', 'amount', 'is_fraud']}
+        onUpload={handleFileUpload}
+      />
+    </ModuleLayout>
+  )
 
-  // ─── Data View (Unlocked) ─────────────────────────────────────────
-  const pct = fraudPercentage ?? 0
+  const pct = fraudPct ?? 0
+  const color = riskColor(pct)
+  const total = (fraudCount ?? 0) + (normalCount ?? 0)
+
+  // Radar data for threat analysis visualization
+  const radarData = [
+    { subject: 'Volume', A: Math.min(100, (total / 100) * 20 + 40), fullMark: 100 },
+    { subject: 'Fraud %', A: pct, fullMark: 100 },
+    { subject: 'Anomaly', A: Math.min(100, pct * 1.5 + 10), fullMark: 100 },
+    { subject: 'Pattern', A: Math.max(10, 100 - pct * 0.8), fullMark: 100 },
+    { subject: 'Risk Score', A: pct, fullMark: 100 },
+  ]
 
   return (
     <ModuleLayout>
-      <motion.div initial="hidden" animate="visible" variants={unlockVariants}>
-        <PageHeader
-          title="Fraud Lens"
-          action={
-            <div className="flex items-center gap-3">
-              {hasData && (
-                <button
-                  onClick={handleClearAll}
-                  disabled={isClearing}
-                  className="inline-flex items-center justify-center rounded-lg border border-red-500/30 bg-transparent px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/10 disabled:opacity-50"
-                >
-                  {isClearing ? 'Clearing...' : 'Start New Analysis'}
-                </button>
-              )}
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-500/15 px-3 py-1 text-xs font-semibold text-teal-400 ring-1 ring-teal-500/30">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Insights Active
-              </span>
-              <CsvUpload
-                onUpload={handleFileUpload}
-                title="Upload Transactions"
-                description="Scan CSV for fraud"
-              />
+      {/* ── Header ────────────────────────────────────── */}
+      <motion.div initial="hidden" animate="visible" variants={reveal}
+        className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl"
+              style={{
+                background: `${ACCENT}10`, border: `1px solid ${ACCENT}28`,
+                boxShadow: `0 0 16px ${ACCENT}18`,
+              }}>
+              <Shield className="h-4.5 w-4.5" style={{ color: ACCENT }} />
+              <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full animate-pulse"
+                style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
             </div>
-          }
-        />
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.18em]"
+                style={{ color: ACCENT, fontFamily: 'var(--ds-font-mono)', opacity: 0.7 }}>
+                Security Module
+              </p>
+              <h1 className="text-2xl font-black leading-tight md:text-3xl"
+                style={{
+                  fontFamily: 'var(--ds-font-display)',
+                    background: `linear-gradient(135deg, rgb(var(--ds-text-primary)) 40%, ${ACCENT} 100%)`,
+                  WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+                }}>
+                Fraud Lens
+              </h1>
+            </div>
+          </div>
+          <p className="text-xs" style={{ color: 'rgba(108,128,162,0.8)', fontFamily: 'var(--ds-font-mono)' }}>
+            Anomaly detection · Threat intelligence · Risk scoring
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold"
+            style={{
+              background: `${ACCENT}10`, border: `1px solid ${ACCENT}22`,
+              color: ACCENT, fontFamily: 'var(--ds-font-mono)', letterSpacing: '0.08em',
+            }}>
+            <Scan className="h-3 w-3" /> SCANNING ACTIVE
+          </span>
+          <motion.button onClick={loadData}
+            className="flex h-8 w-8 items-center justify-center rounded-xl"
+            style={{ background: 'rgb(var(--ds-bg-elevated))', border: '1px solid rgb(var(--ds-border) / 0.12)', color: 'rgb(var(--ds-text-muted))' }}
+            whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}>
+            <RefreshCw className="h-3.5 w-3.5" />
+          </motion.button>
+          {hasData && (
+            <button onClick={handleClearAll} disabled={isClearing}
+              className="rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] transition-all disabled:opacity-50"
+              style={{ border: '1px solid rgba(248,70,70,0.22)', color: 'rgba(248,70,70,0.75)', fontFamily: 'var(--ds-font-mono)', background: 'transparent' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(248,70,70,0.07)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}>
+              {isClearing ? 'Clearing…' : 'Reset'}
+            </button>
+          )}
+          <CsvUpload onUpload={handleFileUpload} title="Upload Transactions" description="transaction_id, amount, is_fraud" />
+        </div>
       </motion.div>
 
       {error && (
-        <div className="rounded-lg border border-ds-accent-danger/30 bg-ds-accent-danger/10 px-4 py-3 text-sm text-ds-accent-danger">
+        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+          className="rounded-xl px-4 py-3 text-sm"
+          style={{ background: 'rgba(248,70,70,0.07)', border: '1px solid rgba(248,70,70,0.22)', color: '#f84646' }}>
           {error}
-        </div>
+        </motion.div>
       )}
 
-      <motion.div initial="hidden" animate="visible" variants={unlockVariants} transition={{ delay: 0.1 }}>
-        <StatsGrid columns={3}>
-          <Card className="unlock-glow">
-            <h3 className="mb-2 text-sm font-medium text-ds-text-muted">Fraud count</h3>
-            <motion.p
-              initial={{ opacity: 0, scale: 0.5 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: 'spring', stiffness: 200 }}
-              className="text-3xl font-bold text-ds-text-primary"
-            >
-              {fraudCount ?? 0}
-            </motion.p>
-          </Card>
-          <Card className="unlock-glow">
-            <h3 className="mb-2 text-sm font-medium text-ds-text-muted">Normal count</h3>
-            <p className="text-3xl font-bold text-ds-text-primary">{normalCount ?? 0}</p>
-          </Card>
-          <Card className="unlock-glow">
-            <h3 className="mb-2 text-sm font-medium text-ds-text-muted">Risk level</h3>
-            <motion.span
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className={`inline-block rounded-full px-3 py-1 text-sm font-medium ${riskColor(pct)} ${riskBg(pct)}`}
-            >
-              {pct < 20 ? 'Low' : pct <= 50 ? 'Medium' : 'High'} ({pct}%)
-            </motion.span>
-          </Card>
-        </StatsGrid>
-      </motion.div>
+      {/* ── Stats row ─────────────────────────────────── */}
+      <motion.div initial="hidden" animate="visible" variants={reveal} transition={{ delay: 0.08 }}
+        className="grid gap-4 sm:grid-cols-3">
 
-      <motion.div initial="hidden" animate="visible" variants={unlockVariants} transition={{ delay: 0.2 }}>
-        <Card>
-            <h3 className="mb-4 text-sm font-medium text-ds-text-muted">Fraud vs normal</h3>
-            {pieData?.length ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3 }}
-                className="h-64"
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                      <Cell fill={COLORS.normal} />
-                      <Cell fill={COLORS.fraud} />
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </motion.div>
-            ) : (
-              <div className="flex h-64 items-center justify-center rounded-lg bg-ds-bg-base/50 text-sm text-ds-text-muted">
-                No chart data
+        {/* Threat gauge */}
+          <div className="relative overflow-hidden rounded-2xl p-5"
+            style={{
+              background: 'rgb(var(--ds-bg-surface))',
+              border: `1px solid ${color}22`,
+              boxShadow: `0 0 30px ${color}08`,
+            }}>
+            <div className="pointer-events-none absolute -right-5 -top-5 h-20 w-20 rounded-full blur-3xl"
+              style={{ background: `${color}20` }} />
+            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em]"
+              style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+            Threat Level
+          </p>
+          <div className="flex items-center gap-4">
+            <div className="relative flex h-[100px] w-[100px] items-center justify-center shrink-0">
+              <ThreatRing pct={pct} color={color} />
+              <div className="absolute flex flex-col items-center">
+                <span className="text-xl font-black tabular-nums" style={{ color, fontFamily: 'var(--ds-font-mono)' }}>{pct}%</span>
               </div>
-            )}
-          </Card>
+            </div>
+            <div>
+              <p className="text-lg font-black" style={{ color, fontFamily: 'var(--ds-font-display)' }}>
+                {riskLabel(pct)}
+              </p>
+              <p className="text-xs" style={{ color: 'rgba(108,128,162,0.7)', fontFamily: 'var(--ds-font-mono)' }}>
+                fraud detection rate
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Fraud count */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.14, ease: [0.22, 1, 0.36, 1] }}
+            className="relative overflow-hidden rounded-2xl p-5"
+            style={{ background: 'rgb(var(--ds-bg-surface))', border: '1px solid rgba(248,70,70,0.18)', boxShadow: '0 0 30px rgba(248,70,70,0.05)' }}>
+            <ScanLines />
+            <div className="pointer-events-none absolute -right-5 -top-5 h-20 w-20 rounded-full blur-3xl"
+              style={{ background: 'rgba(248,70,70,0.18)' }} />
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
+                style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+              Fraud Detected
+            </p>
+            <AlertTriangle className="h-3.5 w-3.5" style={{ color: '#f84646' }} />
+          </div>
+          <p className="text-4xl font-black tabular-nums"
+            style={{ color: '#f84646', fontFamily: 'var(--ds-font-display)' }}>
+            {(fraudCount ?? 0).toLocaleString()}
+          </p>
+          <p className="mt-1 text-xs" style={{ color: 'rgba(108,128,162,0.65)', fontFamily: 'var(--ds-font-mono)' }}>
+            anomalous transactions
+          </p>
         </motion.div>
 
+        {/* Normal count */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            className="relative overflow-hidden rounded-2xl p-5"
+            style={{ background: 'rgb(var(--ds-bg-surface))', border: '1px solid rgba(34,197,148,0.18)', boxShadow: '0 0 30px rgba(34,197,148,0.05)' }}>
+            <div className="pointer-events-none absolute -right-5 -top-5 h-20 w-20 rounded-full blur-3xl"
+              style={{ background: 'rgba(34,197,148,0.15)' }} />
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
+                style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+              Clean Transactions
+            </p>
+            <CheckCircle2 className="h-3.5 w-3.5" style={{ color: '#22c594' }} />
+          </div>
+          <p className="text-4xl font-black tabular-nums"
+            style={{ color: '#22c594', fontFamily: 'var(--ds-font-display)' }}>
+            {(normalCount ?? 0).toLocaleString()}
+          </p>
+          <p className="mt-1 text-xs" style={{ color: 'rgba(108,128,162,0.65)', fontFamily: 'var(--ds-font-mono)' }}>
+            verified normal
+          </p>
+        </motion.div>
+      </motion.div>
+
+      {/* ── Charts ────────────────────────────────────── */}
+      <motion.div initial="hidden" animate="visible" variants={reveal} transition={{ delay: 0.18 }}
+        className="grid gap-6 lg:grid-cols-2">
+
+          {/* Distribution donut */}
+          <TiltCard
+            className="relative overflow-hidden rounded-2xl p-6"
+            style={{ background: 'rgb(var(--ds-bg-surface))', border: `1px solid ${ACCENT}12`, boxShadow: 'var(--ds-card-shadow)' }}
+          >
+            <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full blur-3xl"
+              style={{ background: `${ACCENT}06` }} />
+            <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.14em]"
+              style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+            FRAUD VS NORMAL DISTRIBUTION
+          </p>
+          {pieData?.length ? (
+            <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
+              <div className="h-56 w-full sm:w-64 shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData} dataKey="value" nameKey="name"
+                      cx="50%" cy="50%"
+                      innerRadius={60} outerRadius={90}
+                      paddingAngle={4} strokeWidth={0}
+                    >
+                      <Cell fill="#22c594" />
+                      <Cell fill="#f84646" />
+                    </Pie>
+                    <Tooltip content={<ChartTip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex flex-col gap-3 w-full">
+                {[
+                  { label: 'Normal', value: normalCount ?? 0, color: '#22c594', pct: total > 0 ? 100 - pct : 0 },
+                  { label: 'Fraud', value: fraudCount ?? 0, color: '#f84646', pct },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-xl p-3.5"
+                    style={{ background: `${item.color}07`, border: `1px solid ${item.color}18` }}>
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full" style={{ background: item.color, boxShadow: `0 0 6px ${item.color}` }} />
+                        <span className="text-xs font-semibold" style={{ color: 'rgb(var(--ds-text-secondary))' }}>{item.label}</span>
+                      </div>
+                      <span className="text-sm font-black tabular-nums" style={{ color: item.color, fontFamily: 'var(--ds-font-mono)' }}>
+                        {item.value.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="h-1 overflow-hidden rounded-full" style={{ background: 'rgb(var(--ds-border) / 0.1)' }}>
+                      <motion.div className="h-full rounded-full"
+                        style={{ background: item.color, boxShadow: `0 0 6px ${item.color}50` }}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${item.pct}%` }}
+                        transition={{ duration: 1, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            ) : (
+              <div className="flex h-56 items-center justify-center text-xs"
+                style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                No distribution data
+              </div>
+            )}
+          </TiltCard>
+
+          {/* Threat radar */}
+          <TiltCard
+            className="relative overflow-hidden rounded-2xl p-6"
+            style={{ background: 'rgb(var(--ds-bg-surface))', border: `1px solid rgba(248,70,70,0.1)`, boxShadow: 'var(--ds-card-shadow)' }}
+          >
+            <div className="pointer-events-none absolute -left-6 -top-6 h-28 w-28 rounded-full blur-3xl"
+              style={{ background: 'rgba(248,70,70,0.06)' }} />
+            <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.14em]"
+              style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+              THREAT PROFILE ANALYSIS
+            </p>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart data={radarData} outerRadius={80}>
+                  <PolarGrid stroke="rgb(var(--ds-border) / 0.1)" />
+                  <PolarAngleAxis dataKey="subject"
+                    tick={{ fontSize: 10, fontFamily: 'var(--ds-font-mono)', fill: 'rgb(var(--ds-text-muted))' }} />
+                  <PolarRadiusAxis angle={30} domain={[0, 100]}
+                    tick={{ fontSize: 9, fill: 'rgb(var(--ds-text-muted))' }} />
+                  <Radar name="Threat" dataKey="A" stroke={color} fill={color} fillOpacity={0.12}
+                    strokeWidth={2} />
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
+          </TiltCard>
+        </motion.div>
+
+        {/* ── Threat summary ──────────────────────────────── */}
+        <motion.div initial="hidden" animate="visible" variants={reveal} transition={{ delay: 0.26 }}
+          className="relative overflow-hidden rounded-2xl p-6"
+          style={{
+            background: 'rgb(var(--ds-bg-surface))',
+            border: `1px solid ${color}15`,
+            boxShadow: 'var(--ds-card-shadow)',
+          }}>
+          <ScanLines />
+          <div className="pointer-events-none absolute -right-10 top-0 h-40 w-40 rounded-full blur-3xl"
+            style={{ background: `${color}06` }} />
+          <div className="mb-4 flex items-center gap-2">
+            <Eye className="h-4 w-4" style={{ color: ACCENT }} />
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
+              style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+              ANALYSIS SUMMARY
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-4">
+            {[
+              { label: 'Total Scanned', value: total.toLocaleString(), color: ACCENT },
+              { label: 'Fraud Rate', value: `${pct}%`, color },
+              { label: 'Anomalies', value: (fraudCount ?? 0).toLocaleString(), color: '#f84646' },
+              { label: 'Threat Level', value: riskLabel(pct).split(' ')[0], color },
+            ].map((item) => (
+              <div key={item.label} className="rounded-xl p-3.5"
+                style={{ background: 'rgb(var(--ds-bg-elevated))', border: '1px solid rgb(var(--ds-border) / 0.08)' }}>
+                <p className="mb-1 text-[10px] uppercase tracking-[0.1em]"
+                  style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                  {item.label}
+                </p>
+                <p className="text-xl font-black tabular-nums"
+                  style={{ color: item.color, fontFamily: 'var(--ds-font-display)' }}>
+                  {item.value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+
+      <motion.div initial="hidden" animate="visible" variants={reveal} transition={{ delay: 0.32 }}>
         <AIRecommendations endpoint="/fraud/recommendations" token={token} />
-      </ModuleLayout>
-    )
-  }
+      </motion.div>
+    </ModuleLayout>
+  )
+}
