@@ -1,55 +1,39 @@
 import csv
 import random
-import uuid
-from datetime import datetime, timedelta
 
-filename = "fraud_test.csv"
-num_rows = 1200  # change as needed
+filename = "inventory_test.csv"
+num_rows = 500  # adjust as needed
 
-merchant_categories = [
-    "grocery",
-    "electronics",
-    "restaurant",
-    "fuel",
-    "travel",
-    "crypto",
-    "gambling",
-    "shopping"
-]
-
-start_date = datetime(2024, 1, 1)
+catalog = {
+    "Electronics": [
+        "USB Cable", "Power Bank", "Router", "Keyboard", "Mouse", "Smart Plug"
+    ],
+    "Electrical": [
+        "LED Bulb", "Tube Light", "Switch Board", "Extension Cord", "Ceiling Fan"
+    ],
+    "Accessories": [
+        "Laptop Stand", "HDMI Cable", "Surge Protector", "Battery Pack"
+    ]
+}
 
 with open(filename, "w", newline="") as f:
     writer = csv.writer(f)
-    writer.writerow([
-        "transaction_id",
-        "amount",
-        "timestamp",
-        "merchant_category",
-        "account_age_days"
-    ])
+    writer.writerow(["item_name", "category", "quantity", "price"])
 
     for _ in range(num_rows):
-        transaction_id = str(uuid.uuid4())
+        category = random.choice(list(catalog.keys()))
+        item_name = random.choice(catalog[category])
 
-        # realistic amount spread
-        amount = round(random.uniform(10, 8000), 2)
+        quantity = random.randint(0, 300)
 
-        # random timestamp within 1 year
-        random_minutes = random.randint(0, 365 * 24 * 60)
-        ts = start_date + timedelta(minutes=random_minutes)
-        timestamp = ts.strftime("%Y-%m-%d %H:%M:%S")
+        # category-based pricing realism
+        if category == "Electronics":
+            price = round(random.uniform(300, 5000), 2)
+        elif category == "Electrical":
+            price = round(random.uniform(50, 3000), 2)
+        else:
+            price = round(random.uniform(200, 4000), 2)
 
-        merchant_category = random.choice(merchant_categories)
-
-        account_age_days = random.randint(1, 2000)
-
-        writer.writerow([
-            transaction_id,
-            amount,
-            timestamp,
-            merchant_category,
-            account_age_days
-        ])
+        writer.writerow([item_name, category, quantity, price])
 
 print(f"{filename} generated.")

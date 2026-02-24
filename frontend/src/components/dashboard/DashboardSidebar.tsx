@@ -114,7 +114,7 @@ export default function DashboardSidebar({ open, onToggle }: { open: boolean; on
         <motion.button
           type="button"
           onClick={onToggle}
-          className="absolute -right-3 top-1/2 z-20 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full"
+          className="absolute right-1 top-1/2 z-20 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full"
           style={{
             background: 'rgb(var(--ds-bg-elevated))',
             border: '1px solid rgba(0,212,255,0.22)',

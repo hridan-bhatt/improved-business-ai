@@ -1,5 +1,4 @@
 # Smart Inventory AI: reorder suggestions (rule-based + optional LinearRegression)
-import io
 from typing import List, Dict, Any
 from fastapi import UploadFile, HTTPException
 
@@ -17,6 +16,7 @@ except ImportError:
     HAS_PANDAS = False
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from models.inventory import InventoryItem
 
 
@@ -98,8 +98,9 @@ def process_inventory_csv(file: UploadFile, db: Session) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="Only .csv files are allowed")
 
     try:
-        content = file.file.read()
-        df = pd.read_csv(io.BytesIO(content))
+        # Reset pointer and stream directly into pandas (faster, avoids encoding issues)
+        file.file.seek(0)
+        df = pd.read_csv(file.file)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse CSV file: {str(e)}")
 
@@ -138,35 +139,43 @@ def process_inventory_csv(file: UploadFile, db: Session) -> Dict[str, Any]:
     if df.empty:
         raise HTTPException(status_code=400, detail="The file is empty or has no valid rows")
 
-    errors = []
-    records_added = 0
+    errors: List[str] = []
 
+    # Collapse duplicate item_names within this CSV so we only ever upsert one
+    # record per SKU, avoiding UNIQUE constraint violations.
+    consolidated: Dict[str, Dict[str, Any]] = {}
     for _, row in df.iterrows():
         item_name = str(row['item_name']).strip()
-        category = str(row['category']).strip()
-        quantity = int(row['quantity'])
-        price = float(row['price'])
-
         if not item_name:
             continue
+        consolidated[item_name] = {
+            "item_name": item_name,
+            "category": str(row['category']).strip(),
+            "quantity": int(row['quantity']),
+            "price": float(row['price']),
+        }
 
-        existing = db.query(InventoryItem).filter(InventoryItem.item_name == item_name).first()
-        if existing:
-            existing.quantity = quantity
-            existing.price = price
-            existing.category = category
-            records_added += 1
-        else:
-            new_item = InventoryItem(
-                item_name=item_name,
-                category=category,
-                quantity=quantity,
-                price=price
-            )
-            db.add(new_item)
+    records_added = 0
+    try:
+        for item_name, rec in consolidated.items():
+            existing = db.query(InventoryItem).filter(InventoryItem.item_name == item_name).first()
+            if existing:
+                existing.quantity = rec["quantity"]
+                existing.price = rec["price"]
+                existing.category = rec["category"]
+            else:
+                db.add(InventoryItem(
+                    item_name=rec["item_name"],
+                    category=rec["category"],
+                    quantity=rec["quantity"],
+                    price=rec["price"],
+                ))
             records_added += 1
 
-    db.commit()
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Duplicate inventory item detected: {str(e)}")
 
     return {
         "success": True,

@@ -329,20 +329,25 @@ export default function FraudLens() {
   const [explainResult, setExplainResult] = useState<ExplainResult | null>(null)
   const [explainLoading, setExplainLoading] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabId>('overview')
+  const [windowDays, setWindowDays] = useState<7 | 14 | 30>(7)
   const { hasData, loading, refreshStatus } = useModuleStatus('fraud')
   const { token } = useAuth()
 
   const loadData = useCallback(() => {
     fraudApi.insights().then((data) => {
-      setFraudCount(data.anomalies_detected)
-      setNormalCount(data.total_transactions - data.anomalies_detected)
-      const pct = data.total_transactions > 0
-        ? Math.round((data.anomalies_detected / data.total_transactions) * 100)
-        : 0
-      setFraudPct(pct)
-      setAlerts(data.alerts.map(a => ({ id: String(a.id), type: a.type, score: a.score })))
+      // Only hydrate from legacy insights if we don't have a fresh engine result
+      setFraudCount(prev => (uploadResult ? prev : data.anomalies_detected))
+      setNormalCount(prev => (uploadResult ? prev : data.total_transactions - data.anomalies_detected))
+      setFraudPct(prev => {
+        if (uploadResult) return prev
+        const pct = data.total_transactions > 0
+          ? Math.round((data.anomalies_detected / data.total_transactions) * 100)
+          : 0
+        return pct
+      })
+      setAlerts(prev => (uploadResult ? prev : data.alerts.map(a => ({ id: String(a.id), type: a.type, score: a.score }))))
     }).catch(() => {})
-  }, [])
+  }, [uploadResult])
 
   useEffect(() => { if (hasData) loadData() }, [hasData, loadData])
 
@@ -435,10 +440,38 @@ export default function FraudLens() {
         { name: 'Flagged', value: fraudCount  ?? 0, color: '#f84646' },
       ]
 
-  const timelineSeries: TimelinePoint[] = uploadResult?.chart_data.timeline_series ?? []
+  const rawTimeline: TimelinePoint[] = uploadResult?.chart_data.timeline_series ?? []
+
+  // Determine which dates fall into the selected rolling window. Since backend
+  // already aggregates by date, we approximate "last N days" as the last N
+  // distinct dates present in the dataset.
+  let windowDates: Set<string> | null = null
+  let timelineSeries: TimelinePoint[] = rawTimeline
+  if (rawTimeline.length && windowDays) {
+    const uniqueDates = Array.from(new Set(rawTimeline.map(p => p.date))).sort()
+    const sliceStart = Math.max(0, uniqueDates.length - windowDays)
+    const selected = uniqueDates.slice(sliceStart)
+    windowDates = new Set(selected)
+    timelineSeries = rawTimeline.filter(p => windowDates!.has(p.date))
+  }
+
+  const extractDate = (ts: string | null) => {
+    if (!ts) return ''
+    const s = ts.trim()
+    const parts = s.split(/[T ]/)
+    return parts[0] || s.slice(0, 10)
+  }
+
+  const inWindow = (tx: FraudTransaction) => {
+    if (!windowDates || !tx.timestamp) return true
+    const d = extractDate(tx.timestamp)
+    return windowDates.has(d)
+  }
 
   const highRiskTx: FraudTransaction[] = uploadResult
-    ? uploadResult.transactions.filter(t => t.risk_label === 'High Risk').slice(0, 20)
+    ? uploadResult.transactions
+        .filter(t => t.risk_label === 'High Risk' && inWindow(t))
+        .slice(0, 20)
     : []
 
   const radarData = [
@@ -720,12 +753,33 @@ export default function FraudLens() {
             {/* Risk Score Timeline */}
             <div className="relative overflow-hidden rounded-2xl p-6"
               style={{ background: 'rgb(var(--ds-bg-surface))', border: `1px solid ${ACCENT}12`, boxShadow: 'var(--ds-card-shadow)' }}>
-              <div className="mb-4 flex items-center gap-2">
-                <TrendingUp className="h-4 w-4" style={{ color: ACCENT }} />
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
-                  style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
-                  RISK SCORE TIMELINE
-                </p>
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" style={{ color: ACCENT }} />
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
+                    style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                    RISK SCORE TIMELINE
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 rounded-full px-1.5 py-0.5"
+                  style={{ background: 'rgb(var(--ds-bg-elevated))', border: '1px solid rgb(var(--ds-border) / 0.15)' }}>
+                  {[7, 14, 30].map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setWindowDays(d as 7 | 14 | 30)}
+                      className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                      style={{
+                        fontFamily: 'var(--ds-font-mono)',
+                        background: windowDays === d ? 'rgba(32,210,186,0.16)' : 'transparent',
+                        color: windowDays === d ? '#20D2BA' : 'rgb(var(--ds-text-muted))',
+                        border: windowDays === d ? '1px solid rgba(32,210,186,0.45)' : '1px solid transparent',
+                      }}
+                    >
+                      {d}d
+                    </button>
+                  ))}
+                </div>
               </div>
               {timelineSeries.length > 0 ? (
                 <div className="h-64">
