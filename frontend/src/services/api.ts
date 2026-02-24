@@ -95,3 +95,11 @@ export const chat = {
       body: JSON.stringify({ message, history }),
     }),
 }
+
+export const ai = {
+  ask: (question: string, moduleData: Record<string, unknown>) =>
+    api<{ answer: string; metrics_used?: string[] }>('/ai/ask', {
+      method: 'POST',
+      body: JSON.stringify({ question, module_data: moduleData }),
+    }),
+}

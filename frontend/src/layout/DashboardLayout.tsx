@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
 import DashboardSidebar from '../components/dashboard/DashboardSidebar'
-import ChatPanel from '../components/chat/ChatPanel'
+import BusinessAssistantPanel from '../components/chat/BusinessAssistantPanel'
 
 /**
  * App shell for dashboard and modules — sidebar + main content + chat
@@ -31,7 +31,7 @@ export default function DashboardLayout() {
           </AnimatePresence>
         </div>
       </main>
-      <ChatPanel />
+      <BusinessAssistantPanel />
     </div>
   )
 }

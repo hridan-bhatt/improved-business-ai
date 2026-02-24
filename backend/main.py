@@ -9,7 +9,7 @@ from models.inventory import InventoryItem
 from models.expense import ExpenseItem
 from models.fraud import FraudRecord
 from models.green_grid import GreenGridRecord
-from routers import auth, expense, fraud, inventory, green_grid, health, recommendations, carbon, report, chat
+from routers import auth, expense, fraud, inventory, green_grid, health, recommendations, carbon, report, chat, ai
 
 app = FastAPI(title="Business AI API", version="1.0.0")
 
@@ -35,6 +35,7 @@ app.include_router(recommendations.router)
 app.include_router(carbon.router)
 app.include_router(report.router)
 app.include_router(chat.router)
+app.include_router(ai.router)
 
 
 @app.get("/health")
