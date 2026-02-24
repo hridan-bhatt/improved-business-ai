@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 function getToken(): string | null {
   return localStorage.getItem('business_ai_token')
@@ -86,7 +86,23 @@ export const carbon = {
   estimate: () => api<{ kg_co2_per_year: number; equivalent: string; rating: string; suggestions: string[] }>('/carbon/estimate'),
 }
 export const report = {
-  pdf: () => api<Blob>('/report/pdf'),
+  pdf: async (): Promise<Blob> => {
+    const token = getToken()
+    const headers: HeadersInit = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${API_BASE}/report/pdf`, { headers })
+    if (res.status === 401) {
+      localStorage.removeItem('business_ai_token')
+      localStorage.removeItem('business_ai_user')
+      window.location.href = '/login'
+      throw new Error('UNAUTHORIZED')
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(err.detail || 'Download failed')
+    }
+    return res.blob()
+  },
 }
 export const chat = {
   message: (message: string, history: { role: string; content: string }[]) =>

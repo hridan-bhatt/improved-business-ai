@@ -16,7 +16,7 @@ def generate_report_pdf() -> bytes:
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=inch, leftMargin=inch)
     styles = getSampleStyleSheet()
     story = []
-    story.append(Paragraph("Business AI - Executive Summary", styles["Title"]))
+    story.append(Paragraph("Lucent AI - Executive Summary", styles["Title"]))
     story.append(Spacer(1, 0.3 * inch))
     health = get_health_score()
     story.append(Paragraph(f"Health Score: {health['score']}/100", styles["Heading2"]))

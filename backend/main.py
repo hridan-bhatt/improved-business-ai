@@ -11,12 +11,12 @@ from models.fraud import FraudRecord
 from models.green_grid import GreenGridRecord
 from routers import auth, expense, fraud, inventory, green_grid, health, recommendations, carbon, report, chat, ai
 
-app = FastAPI(title="Business AI API", version="1.0.0")
+app = FastAPI(title="Lucent AI API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -1,8 +1,8 @@
 {
   "projectId": "8c60248e-bdcd-4ce1-9871-2143da94d4e5",
-  "createdAt": 1771919092231,
+  "createdAt": 1771928172792,
   "startupCommands": [
-    "cd backend; venv\\Scripts\\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000",
+    "cmd /c C:\\odooooo\\ai-business-dashboard-main\\ai-business-dashboard-main\\start_backend.bat",
     "cd frontend; npm install; npm run dev"
   ],
   "templateId": "any"

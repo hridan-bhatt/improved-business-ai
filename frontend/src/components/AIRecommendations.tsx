@@ -53,7 +53,7 @@ const SEVERITY_CONFIG = {
 }
 
 async function fetchRecs(endpoint: string, token: string): Promise<Recommendation[]> {
-  const res = await fetch(`http://localhost:8000${endpoint}`, {
+  const res = await fetch(`${endpoint}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)

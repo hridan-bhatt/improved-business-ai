@@ -106,7 +106,7 @@ export default function SectionCTA() {
         </h2>
 
         <p className="mx-auto mt-7 max-w-xl text-lg leading-relaxed" style={{ color: 'rgb(var(--ds-text-secondary))' }}>
-          Join forward-thinking teams that use Business AI to see clearer, catch threats earlier, and stay ahead of every curve.
+            Join forward-thinking teams that use Lucent AI to see clearer, catch threats earlier, and stay ahead of every curve.
         </p>
 
         {/* CTA */}

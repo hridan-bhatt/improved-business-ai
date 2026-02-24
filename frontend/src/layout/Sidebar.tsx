@@ -36,7 +36,7 @@ export default function Sidebar({ open, onToggle }: { open: boolean; onToggle: (
             animate={{ opacity: 1 }}
             className="truncate text-lg font-semibold text-white"
           >
-            Business AI
+              Lucent AI
           </motion.span>
         )}
         <button

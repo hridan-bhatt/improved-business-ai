@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom'
 import { motion, useMotionValue, useTransform, useSpring, AnimatePresence } from 'framer-motion'
 import {
   Receipt, Shield, Package, Leaf, Download,
-  ArrowUpRight, TrendingUp, TrendingDown, Activity,
+  ArrowUpRight, TrendingUp, Activity,
   Zap, Target, BarChart3, Cpu, Globe,
+  Check, X, AlertCircle,
 } from 'lucide-react'
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
@@ -147,13 +148,148 @@ function OrbitDot({ color, score }: { color: string; score: number }) {
   )
 }
 
+/* ── SmoothUI: Basic Toast ─────────────────────────────────── */
+type ToastType = 'success' | 'error'
+function Toast({ message, type, onClose }: { message: string; type: ToastType; onClose: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 4000)
+    return () => clearTimeout(t)
+  }, [onClose])
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 48, scale: 0.92 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 32, scale: 0.94 }}
+      transition={{ type: 'spring', stiffness: 340, damping: 30 }}
+      className="fixed bottom-6 right-6 z-[200] flex items-center gap-3 rounded-2xl px-5 py-3.5 backdrop-blur-md"
+      style={{
+        background: type === 'success'
+          ? 'linear-gradient(135deg, rgba(34,197,148,0.18), rgba(0,212,255,0.08))'
+          : 'linear-gradient(135deg, rgba(248,70,70,0.18), rgba(251,113,133,0.06))',
+        border: `1px solid ${type === 'success' ? 'rgba(34,197,148,0.35)' : 'rgba(248,70,70,0.35)'}`,
+        boxShadow: type === 'success'
+          ? '0 8px 32px rgba(34,197,148,0.2)'
+          : '0 8px 32px rgba(248,70,70,0.2)',
+        minWidth: '280px',
+        maxWidth: '380px',
+      }}
+    >
+      {type === 'success'
+        ? <Check className="h-5 w-5 shrink-0" style={{ color: '#22c594' }} />
+        : <AlertCircle className="h-5 w-5 shrink-0" style={{ color: '#f84646' }} />}
+      <p className="flex-1 text-sm font-semibold" style={{ color: type === 'success' ? '#22c594' : '#f84646', fontFamily: 'var(--ds-font-mono)' }}>
+        {message}
+      </p>
+      <button type="button" onClick={onClose}
+        className="rounded-lg p-1 transition-opacity hover:opacity-60"
+        style={{ color: type === 'success' ? '#22c594' : '#f84646' }}>
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </motion.div>
+  )
+}
+
+/* ── SmoothUI: Dot Morph Button ────────────────────────────── */
+type BtnStatus = 'idle' | 'loading' | 'success' | 'error'
+function DotMorphButton({
+  onClick, label, icon: Icon, status, style: extStyle, className,
+}: {
+  onClick: () => void
+  label: string
+  icon: React.FC<{ className?: string; style?: React.CSSProperties }>
+  status: BtnStatus
+  style?: React.CSSProperties
+  className?: string
+}) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      disabled={status === 'loading'}
+      className={`relative flex items-center justify-center gap-2.5 overflow-hidden rounded-xl px-5 py-2.5 text-sm font-bold disabled:cursor-not-allowed ${className ?? ''}`}
+      style={{
+        background: 'linear-gradient(135deg, rgba(0,212,255,0.2), rgba(0,255,195,0.1))',
+        border: '1px solid rgba(0,212,255,0.3)',
+        color: '#00D4FF',
+        fontFamily: 'var(--ds-font-mono)',
+        letterSpacing: '0.04em',
+        boxShadow: '0 0 20px rgba(0,212,255,0.12)',
+        minWidth: '148px',
+        ...extStyle,
+      }}
+      whileHover={status !== 'loading' ? { scale: 1.04, boxShadow: '0 0 32px rgba(0,212,255,0.25)' } : {}}
+      whileTap={status !== 'loading' ? { scale: 0.97 } : {}}
+    >
+      <AnimatePresence mode="wait">
+        {status === 'idle' && (
+          <motion.span key="idle" className="flex items-center gap-2"
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.18 }}>
+            <Icon className="h-4 w-4" />
+            {label}
+          </motion.span>
+        )}
+        {status === 'loading' && (
+          <motion.span key="loading" className="flex items-center gap-1.5"
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.18 }}>
+            {[0, 1, 2].map(i => (
+              <motion.span key={i} className="inline-block h-2 w-2 rounded-full"
+                style={{ background: '#00D4FF' }}
+                animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }}
+                transition={{ duration: 0.7, repeat: Infinity, delay: i * 0.15, ease: 'easeInOut' }}
+              />
+            ))}
+          </motion.span>
+        )}
+        {status === 'success' && (
+          <motion.span key="success" className="flex items-center gap-2"
+            initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+            style={{ color: '#22c594' }}>
+            <Check className="h-4 w-4" />
+            DOWNLOADED
+          </motion.span>
+        )}
+        {status === 'error' && (
+          <motion.span key="error" className="flex items-center gap-2"
+            initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+            style={{ color: '#f84646' }}>
+            <AlertCircle className="h-4 w-4" />
+            FAILED
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </motion.button>
+  )
+}
+
+/* ── Shimmer Skeleton ─────────────────────────────────────── */
+function Skeleton({ className = '', style = {} }: { className?: string; style?: React.CSSProperties }) {
+  return (
+    <div className={`relative overflow-hidden rounded-2xl ${className}`}
+      style={{ background: 'rgb(var(--ds-bg-elevated))', ...style }}>
+      <motion.div
+        className="absolute inset-0"
+        style={{
+          background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%)',
+        }}
+        animate={{ x: ['-100%', '100%'] }}
+        transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
+      />
+    </div>
+  )
+}
+
 /* ── Main Dashboard ───────────────────────────────────────── */
 export default function Dashboard() {
   const [health, setHealth] = useState<Health | null>(null)
   const [recs, setRecs] = useState<Recs | null>(null)
   const [carbon, setCarbon] = useState<Carbon | null>(null)
   const [expenseSummary, setExpenseSummary] = useState<ExpSummary | null>(null)
-  const [reportLoading, setReportLoading] = useState(false)
+  const [reportStatus, setReportStatus] = useState<BtnStatus>('idle')
+  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null)
   const [time, setTime] = useState(new Date())
 
   useEffect(() => {
@@ -168,15 +304,21 @@ export default function Dashboard() {
   }, [])
 
   async function handleDownloadReport() {
-    setReportLoading(true)
+    if (reportStatus === 'loading') return
+    setReportStatus('loading')
     try {
       const blob = await api.report.pdf()
-      const url = URL.createObjectURL(blob as Blob)
+      const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = url; a.download = 'business_report.pdf'; a.click()
+      a.href = url; a.download = 'lucent_ai_report.pdf'; a.click()
       URL.revokeObjectURL(url)
-    } catch { /* ignore */ } finally {
-      setReportLoading(false)
+      setReportStatus('success')
+      setToast({ message: 'Report downloaded successfully!', type: 'success' })
+      setTimeout(() => setReportStatus('idle'), 2500)
+    } catch {
+      setReportStatus('error')
+      setToast({ message: 'Failed to generate report. Try again.', type: 'error' })
+      setTimeout(() => setReportStatus('idle'), 2500)
     }
   }
 
@@ -225,7 +367,7 @@ export default function Dashboard() {
               </span>
               <span className="text-[10px] font-bold uppercase tracking-[0.18em]"
                 style={{ color: '#00D4FF', fontFamily: 'var(--ds-font-mono)' }}>
-                NEXUS AI · LIVE INTELLIGENCE PLATFORM
+                  LUCENT AI · LIVE INTELLIGENCE PLATFORM
               </span>
             </div>
 
@@ -247,37 +389,22 @@ export default function Dashboard() {
             </p>
           </div>
 
-          <div className="flex flex-col items-start gap-3 sm:items-end">
-            {/* Live clock */}
-            <div className="rounded-xl px-4 py-2" style={{ background: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.12)' }}>
-              <p className="text-[10px]" style={{ color: 'rgba(108,128,162,0.7)', fontFamily: 'var(--ds-font-mono)' }}>SYSTEM TIME</p>
-              <p className="text-lg font-bold tabular-nums" style={{ color: '#00D4FF', fontFamily: 'var(--ds-font-mono)' }}>
-                {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-              </p>
-            </div>
+        <div className="flex flex-col items-start gap-3 sm:items-end">
+              {/* Live clock */}
+              <div className="rounded-xl px-4 py-2" style={{ background: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.12)' }}>
+                <p className="text-[10px]" style={{ color: 'rgba(108,128,162,0.7)', fontFamily: 'var(--ds-font-mono)' }}>SYSTEM TIME</p>
+                <p className="text-lg font-bold tabular-nums" style={{ color: '#00D4FF', fontFamily: 'var(--ds-font-mono)' }}>
+                  {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </p>
+              </div>
 
-            <motion.button
-              type="button"
-              onClick={handleDownloadReport}
-              disabled={reportLoading}
-              className="flex items-center gap-2.5 rounded-xl px-5 py-2.5 text-sm font-bold disabled:opacity-50"
-              style={{
-                background: 'linear-gradient(135deg, rgba(0,212,255,0.2), rgba(0,255,195,0.1))',
-                border: '1px solid rgba(0,212,255,0.3)',
-                color: '#00D4FF',
-                fontFamily: 'var(--ds-font-mono)',
-                letterSpacing: '0.04em',
-                boxShadow: '0 0 20px rgba(0,212,255,0.12)',
-              }}
-              whileHover={{ scale: 1.04, boxShadow: '0 0 32px rgba(0,212,255,0.25)' }}
-              whileTap={{ scale: 0.97 }}
-            >
-              {reportLoading
-                ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" />
-                : <Download className="h-4 w-4" />}
-              EXPORT PDF
-            </motion.button>
-          </div>
+              <DotMorphButton
+                onClick={handleDownloadReport}
+                label="EXPORT PDF"
+                icon={Download}
+                status={reportStatus}
+              />
+            </div>
         </div>
 
         {/* Bottom ticker */}
@@ -366,9 +493,10 @@ export default function Dashboard() {
                       />
                     </div>
                   </motion.div>
-                )) ?? Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="h-20 animate-pulse rounded-2xl" style={{ background: 'rgb(var(--ds-bg-elevated))' }} />
+                  )) ?? Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-20" />
                 ))}
+
               </div>
             </div>
           </div>
@@ -590,16 +718,15 @@ export default function Dashboard() {
                   )
                 })}
               </div>
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <div className="w-full space-y-2">
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <div className="w-full space-y-2">
                     {[100, 85, 70].map((w, i) => (
-                      <div key={i} className="h-14 animate-pulse rounded-xl"
-                        style={{ background: 'rgb(var(--ds-bg-elevated))', width: `${w}%` }} />
-                  ))}
+                      <Skeleton key={i} className="h-14" style={{ width: `${w}%` }} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
           </div>
         </motion.section>
       </div>
@@ -621,19 +748,19 @@ export default function Dashboard() {
               boxShadow: '0 0 40px rgba(34,197,148,0.04)',
             }}
           >
-            <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full blur-3xl"
-              style={{ background: 'rgba(34,197,148,0.12)' }} />
-            <div className="mb-4 flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg"
-                style={{ background: 'rgba(34,197,148,0.1)', border: '1px solid rgba(34,197,148,0.2)' }}>
-                <Leaf className="h-4 w-4" style={{ color: '#22c594' }} />
+              <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full blur-3xl"
+                style={{ background: 'rgba(34,197,148,0.12)' }} />
+              <div className="mb-4 flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg"
+                  style={{ background: 'rgba(34,197,148,0.1)', border: '1px solid rgba(34,197,148,0.2)' }}>
+                  <Leaf className="h-4 w-4" style={{ color: '#22c594' }} />
+                </div>
+                <p className="text-xs font-bold uppercase tracking-[0.12em]"
+                  style={{ color: 'rgba(108,128,162,0.8)', fontFamily: 'var(--ds-font-mono)' }}>
+                  Carbon Footprint
+                </p>
               </div>
-              <p className="text-xs font-bold uppercase tracking-[0.12em]"
-                style={{ color: 'rgba(108,128,162,0.8)', fontFamily: 'var(--ds-font-mono)' }}>
-                Carbon Footprint
-              </p>
-            </div>
-            {carbon ? (
+              {carbon ? (
               <div className="flex items-end justify-between gap-4">
                 <div>
                   <div className="flex items-baseline gap-1.5">
@@ -661,9 +788,9 @@ export default function Dashboard() {
                   </p>
                 </div>
               </div>
-            ) : (
-                <div className="h-20 animate-pulse rounded-xl" style={{ background: 'rgb(var(--ds-bg-elevated))' }} />
-            )}
+              ) : (
+                <Skeleton className="h-20" />
+              )}
           </TiltCard>
 
           {/* Report download */}
@@ -690,27 +817,12 @@ export default function Dashboard() {
               style={{ color: 'rgb(var(--ds-text-secondary))' }}>
                 AI-generated PDF covering all modules — health score, expense trends, fraud analysis, inventory and sustainability data.
               </p>
-            <motion.button
-              type="button"
-              onClick={handleDownloadReport}
-              disabled={reportLoading}
-              className="flex items-center gap-2.5 rounded-xl px-5 py-2.5 text-sm font-bold disabled:opacity-50"
-              style={{
-                background: 'linear-gradient(135deg, rgba(0,212,255,0.18), rgba(0,255,195,0.1))',
-                border: '1px solid rgba(0,212,255,0.3)',
-                color: '#00D4FF',
-                fontFamily: 'var(--ds-font-mono)',
-                letterSpacing: '0.04em',
-                boxShadow: '0 0 20px rgba(0,212,255,0.1)',
-              }}
-              whileHover={{ scale: 1.04, boxShadow: '0 0 32px rgba(0,212,255,0.2)' }}
-              whileTap={{ scale: 0.97 }}
-            >
-              {reportLoading
-                ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" />
-                : <Download className="h-4 w-4" />}
-              DOWNLOAD REPORT
-            </motion.button>
+              <DotMorphButton
+                onClick={handleDownloadReport}
+                label="DOWNLOAD REPORT"
+                icon={Download}
+                status={reportStatus}
+              />
           </TiltCard>
         </div>
       </motion.section>

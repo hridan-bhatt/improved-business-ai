@@ -112,9 +112,9 @@ export default function Login() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
         >
-          <span className="text-lg font-bold tracking-tight text-ds-text-primary" style={{ fontFamily: 'var(--ds-font-display)' }}>
-            Business AI
-          </span>
+            <span className="text-lg font-bold tracking-tight text-ds-text-primary" style={{ fontFamily: 'var(--ds-font-display)' }}>
+              Lucent AI
+            </span>
         </motion.div>
 
         <div className="relative z-10 max-w-lg">
@@ -191,9 +191,9 @@ export default function Login() {
         >
           {/* Mobile brand */}
           <div className="mb-8 md:hidden">
-            <span className="text-xl font-bold text-ds-text-primary" style={{ fontFamily: 'var(--ds-font-display)' }}>
-              Business AI
-            </span>
+              <span className="text-xl font-bold text-ds-text-primary" style={{ fontFamily: 'var(--ds-font-display)' }}>
+                Lucent AI
+              </span>
           </div>
 
           <div

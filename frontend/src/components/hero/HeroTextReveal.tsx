@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 
-const title = 'Business AI'
+const title = 'Lucent AI'
 const letters = title.split('')
 
 const letterVariants = {

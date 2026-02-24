@@ -42,7 +42,7 @@ export default function SectionWhy() {
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.4 }}
         >
-          Why Business AI
+            Why Lucent AI
         </motion.p>
         <motion.h2
           className="max-w-2xl text-ds-title font-bold tracking-tight text-ds-text-primary"

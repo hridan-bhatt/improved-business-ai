@@ -6,6 +6,7 @@ import {
   LayoutDashboard, Receipt, Shield, Package, Leaf,
   ChevronRight, Settings, LogOut, Zap, Activity,
 } from 'lucide-react'
+import { api } from '../../services/api'
 
 const nav = [
   { to: '/dashboard',          label: 'Dashboard',       icon: LayoutDashboard, color: '#00D4FF', glow: 'rgba(0,212,255,0.35)',   end: true  },
@@ -19,10 +20,24 @@ const nav = [
 export default function DashboardSidebar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const { user, logout } = useAuth()
   const [time, setTime] = useState(new Date())
+  const [fraudAlertCount, setFraudAlertCount] = useState(0)
 
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000)
     return () => clearInterval(t)
+  }, [])
+
+  useEffect(() => {
+    // Fetch fraud alert count for badge
+    api<{ has_data: boolean }>('/fraud/status')
+      .then(s => {
+        if (s.has_data) {
+          api<{ alerts: { id: number; type: string; score: number }[] }>('/fraud/insights')
+            .then(d => setFraudAlertCount(d.alerts?.length ?? 0))
+            .catch(() => {})
+        }
+      })
+      .catch(() => {})
   }, [])
 
   const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -85,7 +100,7 @@ export default function DashboardSidebar({ open, onToggle }: { open: boolean; on
                   WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
                   letterSpacing: '0.04em',
                 }}>
-                NEXUS AI
+                  LUCENT AI
               </p>
               <p className="text-[9px] leading-tight truncate"
                 style={{ color: 'rgba(108,128,162,0.6)', fontFamily: 'var(--ds-font-mono)', letterSpacing: '0.12em' }}>
@@ -168,32 +183,32 @@ export default function DashboardSidebar({ open, onToggle }: { open: boolean; on
       </AnimatePresence>
 
       {/* ── Nav items ─────────────────────────────────── */}
-      <nav className="flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden px-2 py-1">
-        {nav.map(({ to, label, icon: Icon, color, glow, end }) => (
-          <NavLink key={to} to={to} end={end}>
-            {({ isActive }) => (
-              <motion.div
-                className="relative flex items-center gap-3 overflow-hidden rounded-xl px-2.5 py-2 cursor-pointer"
-                style={{
-                  background: isActive ? `${color}12` : 'transparent',
-                  border: isActive ? `1px solid ${color}22` : '1px solid transparent',
-                }}
-                whileHover={{
-                  background: `${color}0e`,
-                  border: `1px solid ${color}18`,
-                  transition: { duration: 0.12 },
-                }}
-                whileTap={{ scale: 0.97 }}
-              >
-                {/* Active left bar */}
-                {isActive && (
-                  <motion.div
-                    layoutId="active-bar"
-                    className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full"
-                    style={{ background: color, boxShadow: `0 0 10px ${glow}` }}
-                    transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-                  />
-                )}
+        <nav className="flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden px-2 py-1">
+          {nav.map(({ to, label, icon: Icon, color, glow, end }) => (
+            <NavLink key={to} to={to} end={end}>
+              {({ isActive }) => (
+                <motion.div
+                  className="relative flex items-center gap-3 overflow-hidden rounded-xl px-2.5 py-2 cursor-pointer"
+                  style={{
+                    background: isActive ? `${color}12` : 'transparent',
+                    border: isActive ? `1px solid ${color}22` : '1px solid transparent',
+                  }}
+                  whileHover={{
+                    background: `${color}0e`,
+                    border: `1px solid ${color}18`,
+                    transition: { duration: 0.12 },
+                  }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  {/* Active left bar */}
+                  {isActive && (
+                    <motion.div
+                      layoutId="active-bar"
+                      className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full"
+                      style={{ background: color, boxShadow: `0 0 10px ${glow}` }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                    />
+                  )}
 
                   {/* Icon */}
                   <div
@@ -204,51 +219,88 @@ export default function DashboardSidebar({ open, onToggle }: { open: boolean; on
                       boxShadow: isActive ? `0 0 12px ${color}25` : 'none',
                     }}
                   >
-                  <Icon className="h-4 w-4"
+                    <Icon className="h-4 w-4"
                       style={{ color: isActive ? color : 'rgb(var(--ds-text-muted))' }} />
-                  {/* Active pulse dot */}
-                  {isActive && !open && (
-                    <motion.div
-                      className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full"
-                      style={{ background: color, boxShadow: `0 0 6px ${color}` }}
-                      animate={{ opacity: [1, 0.3, 1] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                    />
-                  )}
-                </div>
+                    {/* Active pulse dot */}
+                    {isActive && !open && (
+                      <motion.div
+                        className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full"
+                        style={{ background: color, boxShadow: `0 0 6px ${color}` }}
+                        animate={{ opacity: [1, 0.3, 1] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                      />
+                    )}
+                    {/* Fraud alert badge */}
+                    {to === '/modules/fraud' && fraudAlertCount > 0 && (
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-black"
+                        style={{
+                          background: '#f84646',
+                          color: '#fff',
+                          fontFamily: 'var(--ds-font-mono)',
+                          boxShadow: '0 0 8px rgba(248,70,70,0.6)',
+                          zIndex: 20,
+                        }}
+                      >
+                        {fraudAlertCount > 9 ? '9+' : fraudAlertCount}
+                      </motion.div>
+                    )}
+                  </div>
 
-                {/* Label */}
-                <AnimatePresence initial={false}>
-                  {open && (
-                    <motion.span
-                      key="label"
-                      initial={{ opacity: 0, width: 0 }}
-                      animate={{ opacity: 1, width: 'auto' }}
-                      exit={{ opacity: 0, width: 0 }}
-                      transition={{ duration: 0.16 }}
+                  {/* Label */}
+                  <AnimatePresence initial={false}>
+                    {open && (
+                      <motion.span
+                        key="label"
+                        initial={{ opacity: 0, width: 0 }}
+                        animate={{ opacity: 1, width: 'auto' }}
+                        exit={{ opacity: 0, width: 0 }}
+                        transition={{ duration: 0.16 }}
                         className="overflow-hidden whitespace-nowrap text-sm font-semibold"
                         style={{
                           color: isActive ? color : 'rgb(var(--ds-text-secondary))',
                           fontFamily: 'var(--ds-font-sans)',
                         }}
-                    >
-                      {label}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
+                      >
+                        {label}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
 
-                {/* Shimmer on active */}
-                {isActive && (
-                  <div className="pointer-events-none absolute inset-0 rounded-xl"
-                    style={{
-                      background: `linear-gradient(105deg, transparent 30%, ${color}10 50%, transparent 70%)`,
-                    }} />
-                )}
-              </motion.div>
-            )}
-          </NavLink>
-        ))}
-      </nav>
+                  {/* Fraud count label badge (expanded sidebar) */}
+                  {open && to === '/modules/fraud' && fraudAlertCount > 0 && (
+                    <AnimatePresence>
+                      <motion.span
+                        initial={{ opacity: 0, scale: 0.7 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.7 }}
+                        className="ml-auto rounded-full px-1.5 py-0.5 text-[9px] font-black"
+                        style={{
+                          background: 'rgba(248,70,70,0.12)',
+                          color: '#f84646',
+                          fontFamily: 'var(--ds-font-mono)',
+                          border: '1px solid rgba(248,70,70,0.2)',
+                        }}
+                      >
+                        {fraudAlertCount}
+                      </motion.span>
+                    </AnimatePresence>
+                  )}
+
+                  {/* Shimmer on active */}
+                  {isActive && (
+                    <div className="pointer-events-none absolute inset-0 rounded-xl"
+                      style={{
+                        background: `linear-gradient(105deg, transparent 30%, ${color}10 50%, transparent 70%)`,
+                      }} />
+                  )}
+                </motion.div>
+              )}
+            </NavLink>
+          ))}
+        </nav>
 
       {/* ── Divider ─────────────────────────────────────── */}
       <div className="mx-3 h-px" style={{ background: 'rgba(0,212,255,0.06)' }} />

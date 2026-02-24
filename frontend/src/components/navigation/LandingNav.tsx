@@ -44,7 +44,7 @@ export default function LandingNav() {
           className="font-display text-base font-bold tracking-[0.08em] uppercase text-ds-text-primary transition-colors group-hover:text-ds-accent"
           style={{ letterSpacing: '0.12em' }}
         >
-          Business<span style={{ color: 'rgb(var(--ds-accent))' }}>AI</span>
+            Lucent<span style={{ color: 'rgb(var(--ds-accent))' }}>AI</span>
         </span>
       </Link>
 
