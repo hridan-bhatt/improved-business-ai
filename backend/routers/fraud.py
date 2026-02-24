@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
 from core.security import get_current_user
 from database import get_db
 from services.fraud_service import get_fraud_insights, get_fraud_chart_data, upload_fraud_csv, get_fraud_status
+from services.explainability_engine import explain_transaction
 
 router = APIRouter(prefix="/fraud", tags=["fraud"])
 
@@ -36,3 +37,11 @@ def clear_fraud_data(user=Depends(get_current_user), db: Session = Depends(get_d
     except Exception as e:
         db.rollback()
         return {"message": f"Error clearing data: {str(e)}"}
+
+
+@router.get("/explain/{transaction_id}")
+def explain_fraud(transaction_id: str, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    result = explain_transaction(transaction_id, db)
+    if not result["found"]:
+        raise HTTPException(status_code=404, detail=f"Transaction '{transaction_id}' not found.")
+    return result

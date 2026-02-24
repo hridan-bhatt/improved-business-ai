@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { motion, useMotionValue, useTransform, useSpring } from 'framer-motion'
+import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from 'framer-motion'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts'
-import { Shield, CheckCircle2, AlertTriangle, Activity, Eye, Scan, RefreshCw } from 'lucide-react'
-import { fraudApi } from './services/api'
+import { Shield, CheckCircle2, AlertTriangle, Eye, Scan, RefreshCw, X, DollarSign, Store, Clock, Copy, Cpu, Loader2 } from 'lucide-react'
+import { fraudApi, ExplainResult, ExplainPoint } from './services/api'
 import useModuleStatus from '../../hooks/useModuleStatus'
 import ModuleLayout from '../../components/module/ModuleLayout'
 import PreInsightLayout from '../../components/module/PreInsightLayout'
@@ -142,13 +142,127 @@ const reveal = {
   visible: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.58, ease: [0.16, 1, 0.3, 1] } },
 }
 
+/* ── Explain icon map ─────────────────────────────────── */
+const ICON_MAP: Record<ExplainPoint['icon'], React.ElementType> = {
+  amount:    DollarSign,
+  vendor:    Store,
+  hours:     Clock,
+  duplicate: Copy,
+  model:     Cpu,
+}
+
+/* ── Explain Modal ────────────────────────────────────── */
+function ExplainModal({ result, onClose }: { result: ExplainResult; onClose: () => void }) {
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}
+        onClick={onClose}
+      >
+        <motion.div
+          className="relative w-full max-w-lg overflow-hidden rounded-2xl"
+          style={{
+            background: 'rgb(var(--ds-bg-surface))',
+            border: `1px solid ${ACCENT}22`,
+            boxShadow: 'var(--ds-surface-shadow-lg)',
+          }}
+          initial={{ opacity: 0, scale: 0.94, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.94, y: 20 }}
+          transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-start justify-between p-5 pb-4"
+            style={{ borderBottom: '1px solid rgb(var(--ds-border) / 0.1)' }}>
+            <div>
+              <div className="mb-1 flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg"
+                  style={{ background: `${ACCENT}12`, border: `1px solid ${ACCENT}25` }}>
+                  <Eye className="h-3.5 w-3.5" style={{ color: ACCENT }} />
+                </div>
+                <span className="text-[9px] font-bold uppercase tracking-[0.18em]"
+                  style={{ color: ACCENT, fontFamily: 'var(--ds-font-mono)', opacity: 0.8 }}>
+                  Explainability Report
+                </span>
+              </div>
+              <h2 className="text-base font-black" style={{ color: 'rgb(var(--ds-text-primary))', fontFamily: 'var(--ds-font-display)' }}>
+                Transaction&nbsp;
+                <span style={{ color: ACCENT, fontFamily: 'var(--ds-font-mono)', fontWeight: 700 }}>
+                  {result.transaction_id}
+                </span>
+              </h2>
+              <p className="mt-0.5 text-xs" style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                Amount: <strong style={{ color: '#f84646' }}>${result.amount?.toLocaleString()}</strong>
+                &ensp;·&ensp;Status: <strong style={{ color: '#f84646' }}>FLAGGED</strong>
+              </p>
+            </div>
+            <button onClick={onClose}
+              className="flex h-8 w-8 items-center justify-center rounded-xl transition-colors"
+              style={{ color: 'rgb(var(--ds-text-muted))', background: 'rgb(var(--ds-bg-elevated))' }}>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Explanation points */}
+          <div className="space-y-2.5 p-5">
+            {result.points.map((pt, i) => {
+              const Icon = ICON_MAP[pt.icon] ?? Cpu
+              const isWarning = ['amount', 'vendor', 'hours', 'duplicate'].includes(pt.icon)
+              const accentCol = isWarning ? '#f84646' : ACCENT
+              return (
+                <motion.div
+                  key={i}
+                  className="flex gap-3 rounded-xl p-3.5"
+                  style={{
+                    background: `${accentCol}07`,
+                    border: `1px solid ${accentCol}18`,
+                  }}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.07, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                    style={{ background: `${accentCol}12`, border: `1px solid ${accentCol}25` }}>
+                    <Icon className="h-3.5 w-3.5" style={{ color: accentCol }} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold" style={{ color: accentCol, fontFamily: 'var(--ds-font-mono)' }}>
+                      {pt.label}
+                    </p>
+                    <p className="mt-0.5 text-xs leading-relaxed" style={{ color: 'rgb(var(--ds-text-secondary))' }}>
+                      {pt.detail}
+                    </p>
+                  </div>
+                </motion.div>
+              )
+            })}
+          </div>
+
+          {/* Footer */}
+          <div className="px-5 pb-5">
+            <p className="text-[10px]" style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+              Explanations are statistical signals — not legal determinations. Review with your compliance team.
+            </p>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
 export default function FraudLens() {
   const [pieData, setPieData] = useState<{ name: string; value: number }[] | null>(null)
   const [fraudCount, setFraudCount] = useState<number | null>(null)
   const [normalCount, setNormalCount] = useState<number | null>(null)
   const [fraudPct, setFraudPct] = useState<number | null>(null)
+  const [alerts, setAlerts] = useState<{ id: string; type: string; score: number }[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isClearing, setIsClearing] = useState(false)
+  const [explainResult, setExplainResult] = useState<ExplainResult | null>(null)
+  const [explainLoading, setExplainLoading] = useState<string | null>(null)
   const { hasData, loading, refreshStatus } = useModuleStatus('fraud')
   const { token } = useAuth()
 
@@ -164,6 +278,7 @@ export default function FraudLens() {
         { name: 'Normal', value: data.total_transactions - data.anomalies_detected },
         { name: 'Fraud', value: data.anomalies_detected },
       ])
+      setAlerts(data.alerts.map(a => ({ id: String(a.id), type: a.type, score: a.score })))
     }).catch(() => {})
   }, [])
 
@@ -181,6 +296,8 @@ export default function FraudLens() {
         { name: 'Fraud', value: data.fraud_count },
       ])
       await refreshStatus()
+      // Reload full insights to populate alerts
+      loadData()
       return data
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
@@ -193,9 +310,22 @@ export default function FraudLens() {
     setIsClearing(true)
     try {
       await fraudApi.clear()
-      setPieData(null); setFraudCount(null); setNormalCount(null); setFraudPct(null); setError(null)
+      setPieData(null); setFraudCount(null); setNormalCount(null); setFraudPct(null)
+      setAlerts([]); setError(null)
       await refreshStatus()
     } catch { alert('Failed to reset.') } finally { setIsClearing(false) }
+  }
+
+  const handleExplain = async (transactionId: string) => {
+    setExplainLoading(transactionId)
+    try {
+      const result = await fraudApi.explain(transactionId)
+      setExplainResult(result)
+    } catch {
+      // no-op
+    } finally {
+      setExplainLoading(null)
+    }
   }
 
   if (loading) return (
@@ -532,9 +662,89 @@ export default function FraudLens() {
           </div>
         </motion.div>
 
-      <motion.div initial="hidden" animate="visible" variants={reveal} transition={{ delay: 0.32 }}>
-        <AIRecommendations endpoint="/fraud/recommendations" token={token} />
-      </motion.div>
-    </ModuleLayout>
-  )
+        <motion.div initial="hidden" animate="visible" variants={reveal} transition={{ delay: 0.32 }}>
+          <AIRecommendations endpoint="/fraud/recommendations" token={token} />
+        </motion.div>
+
+        {/* ── Flagged Transactions ──────────────────────── */}
+        {alerts.length > 0 && (
+          <motion.div initial="hidden" animate="visible" variants={reveal} transition={{ delay: 0.38 }}
+            className="relative overflow-hidden rounded-2xl p-6"
+            style={{
+              background: 'rgb(var(--ds-bg-surface))',
+              border: '1px solid rgba(248,70,70,0.12)',
+              boxShadow: 'var(--ds-card-shadow)',
+            }}>
+            <div className="mb-4 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" style={{ color: '#f84646' }} />
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
+                style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                FLAGGED TRANSACTIONS
+              </p>
+              <span className="ml-auto rounded-full px-2 py-0.5 text-[9px] font-bold"
+                style={{ background: 'rgba(248,70,70,0.1)', color: '#f84646', fontFamily: 'var(--ds-font-mono)' }}>
+                {alerts.length} flagged
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs" style={{ fontFamily: 'var(--ds-font-mono)' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgb(var(--ds-border) / 0.1)' }}>
+                    {['Transaction ID', 'Type', 'Risk Score', 'Action'].map(h => (
+                      <th key={h} className="pb-2 pr-4 text-left font-semibold"
+                        style={{ color: 'rgb(var(--ds-text-muted))' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {alerts.map((alert, i) => (
+                    <motion.tr key={alert.id}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.38 + i * 0.05 }}
+                      style={{ borderBottom: '1px solid rgb(var(--ds-border) / 0.06)' }}>
+                      <td className="py-2.5 pr-4 font-medium" style={{ color: ACCENT }}>{alert.id}</td>
+                      <td className="py-2.5 pr-4" style={{ color: 'rgb(var(--ds-text-secondary))' }}>{alert.type}</td>
+                      <td className="py-2.5 pr-4">
+                        <span className="rounded-full px-2 py-0.5 text-[9px] font-bold"
+                          style={{
+                            background: alert.score > 0.5 ? 'rgba(248,70,70,0.1)' : 'rgba(251,191,36,0.1)',
+                            color: alert.score > 0.5 ? '#f84646' : '#fbbf24',
+                          }}>
+                          {alert.score.toFixed(2)}
+                        </span>
+                      </td>
+                      <td className="py-2.5">
+                        <motion.button
+                          onClick={() => handleExplain(alert.id)}
+                          disabled={explainLoading === alert.id}
+                          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.06em] transition-all disabled:opacity-60"
+                          style={{
+                            background: `${ACCENT}10`,
+                            border: `1px solid ${ACCENT}25`,
+                            color: ACCENT,
+                          }}
+                          whileHover={{ scale: 1.04 }}
+                          whileTap={{ scale: 0.96 }}
+                        >
+                          {explainLoading === alert.id
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Eye className="h-3 w-3" />}
+                          Explain
+                        </motion.button>
+                      </td>
+                    </motion.tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Explain Modal ─────────────────────────────── */}
+        {explainResult && (
+          <ExplainModal result={explainResult} onClose={() => setExplainResult(null)} />
+        )}
+      </ModuleLayout>
+    )
 }
