@@ -264,11 +264,12 @@ function ExplainModal({ result, onClose }: { result: ExplainResult; onClose: () 
 }
 
 /* ── Animated Tab Bar ────────────────────────────────────── */
-type TabId = 'overview' | 'risk' | 'alerts' | 'ai'
+type TabId = 'overview' | 'risk' | 'alerts' | 'criteria' | 'ai'
 const TABS: { id: TabId; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'risk',     label: 'Risk Analysis' },
   { id: 'alerts',   label: 'Flagged Alerts' },
+  { id: 'criteria', label: 'Risk Criteria' },
   { id: 'ai',       label: 'AI Insights' },
 ]
 
@@ -311,6 +312,8 @@ function AnimatedTabBar({ active, onChange, alertCount }: {
   )
 }
 
+type WindowRange = 7 | 14 | 30 | 'lifetime'
+
 /* ─────────────────────────────────────────────────────────── */
 /*  Main Component                                             */
 /* ─────────────────────────────────────────────────────────── */
@@ -329,7 +332,7 @@ export default function FraudLens() {
   const [explainResult, setExplainResult] = useState<ExplainResult | null>(null)
   const [explainLoading, setExplainLoading] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabId>('overview')
-  const [windowDays, setWindowDays] = useState<7 | 14 | 30>(7)
+  const [windowDays, setWindowDays] = useState<WindowRange>(7)
   const { hasData, loading, refreshStatus } = useModuleStatus('fraud')
   const { token } = useAuth()
 
@@ -369,6 +372,8 @@ export default function FraudLens() {
           .map(t => ({ id: t.transaction_id, type: t.risk_label, score: t.risk_score / 100 }))
       )
       await refreshStatus()
+      // Notify dashboard sidebar / other listeners that fraud alerts changed
+      window.dispatchEvent(new Event('fraud:updated'))
       return data
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
@@ -386,6 +391,8 @@ export default function FraudLens() {
       setFraudCount(null); setNormalCount(null); setFraudPct(null)
       setAlerts([]); setError(null)
       await refreshStatus()
+      // Notify listeners that fraud data has been cleared so badges can reset
+      window.dispatchEvent(new Event('fraud:cleared'))
     } catch { alert('Failed to reset.') } finally { setIsClearing(false) }
   }
 
@@ -447,7 +454,7 @@ export default function FraudLens() {
   // distinct dates present in the dataset.
   let windowDates: Set<string> | null = null
   let timelineSeries: TimelinePoint[] = rawTimeline
-  if (rawTimeline.length && windowDays) {
+  if (rawTimeline.length && typeof windowDays === 'number' && windowDays > 0) {
     const uniqueDates = Array.from(new Set(rawTimeline.map(p => p.date))).sort()
     const sliceStart = Math.max(0, uniqueDates.length - windowDays)
     const selected = uniqueDates.slice(sliceStart)
@@ -767,7 +774,7 @@ export default function FraudLens() {
                     <button
                       key={d}
                       type="button"
-                      onClick={() => setWindowDays(d as 7 | 14 | 30)}
+                      onClick={() => setWindowDays(d as WindowRange)}
                       className="rounded-full px-2 py-0.5 text-[10px] font-bold"
                       style={{
                         fontFamily: 'var(--ds-font-mono)',
@@ -779,6 +786,19 @@ export default function FraudLens() {
                       {d}d
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    onClick={() => setWindowDays('lifetime')}
+                    className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                    style={{
+                      fontFamily: 'var(--ds-font-mono)',
+                      background: windowDays === 'lifetime' ? 'rgba(32,210,186,0.16)' : 'transparent',
+                      color: windowDays === 'lifetime' ? '#20D2BA' : 'rgb(var(--ds-text-muted))',
+                      border: windowDays === 'lifetime' ? '1px solid rgba(32,210,186,0.45)' : '1px solid transparent',
+                    }}
+                  >
+                    Lifetime
+                  </button>
                 </div>
               </div>
               {timelineSeries.length > 0 ? (
@@ -963,6 +983,137 @@ export default function FraudLens() {
                 </p>
               </div>
             )}
+          </motion.div>
+        )}
+
+        {/* ═══ Risk Criteria Tab ═══════════════════════════════════════════ */}
+        {activeTab === 'criteria' && (
+          <motion.div key="criteria"
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+            className="space-y-4">
+            <div className="relative overflow-hidden rounded-2xl p-6"
+              style={{ background: 'rgb(var(--ds-bg-surface))', border: `1px solid ${ACCENT}18`, boxShadow: 'var(--ds-card-shadow)' }}>
+              <ScanLines />
+              <div className="pointer-events-none absolute -right-10 top-0 h-40 w-40 rounded-full blur-3xl"
+                style={{ background: `${ACCENT}06` }} />
+              <div className="mb-3 flex items-center gap-2">
+                <Eye className="h-4 w-4" style={{ color: ACCENT }} />
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
+                  style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                  HOW FRAUD LENS FLAGS TRANSACTIONS
+                </p>
+              </div>
+              <p className="mb-4 text-xs leading-relaxed"
+                style={{ color: 'rgb(var(--ds-text-secondary))', fontFamily: 'var(--ds-font-mono)' }}>
+                Every transaction receives a 0–100 risk score. Scores under 30 are treated as <span style={{ color: '#22c594', fontWeight: 700 }}>Safe</span>,
+                30–69 as <span style={{ color: '#fbbf24', fontWeight: 700 }}>Suspicious</span>, and 70+ as <span style={{ color: '#f84646', fontWeight: 700 }}>High Risk</span>.
+                Any Suspicious or High Risk transaction is considered flagged.
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-2xl p-4"
+                  style={{ background: 'rgb(var(--ds-bg-elevated))', border: '1px solid rgb(var(--ds-border) / 0.12)' }}>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em]"
+                    style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Amount anomaly
+                  </p>
+                  <p className="mb-1 text-xs font-semibold"
+                    style={{ color: 'rgb(var(--ds-text-primary))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Up to 25 points
+                  </p>
+                  <p className="text-xs leading-relaxed"
+                    style={{ color: 'rgb(var(--ds-text-secondary))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Compares each amount to the customer&apos;s recent average. 3×+ average gets the highest score,
+                    2×–3× medium, 1.5×–2× low. With no history, very large absolute amounts (over 50k) are treated as risky.
+                  </p>
+                </div>
+                <div className="rounded-2xl p-4"
+                  style={{ background: 'rgb(var(--ds-bg-elevated))', border: '1px solid rgb(var(--ds-border) / 0.12)' }}>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em]"
+                    style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Velocity (burst activity)
+                  </p>
+                  <p className="mb-1 text-xs font-semibold"
+                    style={{ color: 'rgb(var(--ds-text-primary))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Up to 20 points
+                  </p>
+                  <p className="text-xs leading-relaxed"
+                    style={{ color: 'rgb(var(--ds-text-secondary))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Counts how many transactions occur within a ±10 minute window. 5+ in that window scores highest,
+                    3–4 adds a medium bump, fewer have no velocity impact.
+                  </p>
+                </div>
+                <div className="rounded-2xl p-4"
+                  style={{ background: 'rgb(var(--ds-bg-elevated))', border: '1px solid rgb(var(--ds-border) / 0.12)' }}>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em]"
+                    style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Merchant category risk
+                  </p>
+                  <p className="mb-1 text-xs font-semibold"
+                    style={{ color: 'rgb(var(--ds-text-primary))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Up to 15 points
+                  </p>
+                  <p className="text-xs leading-relaxed"
+                    style={{ color: 'rgb(var(--ds-text-secondary))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Categories such as gambling, crypto, gift cards, prepaid, and wire transfers are treated as
+                    inherently higher risk and add extra score when present.
+                  </p>
+                </div>
+                <div className="rounded-2xl p-4"
+                  style={{ background: 'rgb(var(--ds-bg-elevated))', border: '1px solid rgb(var(--ds-border) / 0.12)' }}>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em]"
+                    style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Time-of-day anomaly
+                  </p>
+                  <p className="mb-1 text-xs font-semibold"
+                    style={{ color: 'rgb(var(--ds-text-primary))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Up to 10 points
+                  </p>
+                  <p className="text-xs leading-relaxed"
+                    style={{ color: 'rgb(var(--ds-text-secondary))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Transactions between midnight and 5 AM are considered higher risk and receive an additional bump
+                    in their score when timestamps are available.
+                  </p>
+                </div>
+                <div className="rounded-2xl p-4"
+                  style={{ background: 'rgb(var(--ds-bg-elevated))', border: '1px solid rgb(var(--ds-border) / 0.12)' }}>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em]"
+                    style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Account age vs. amount
+                  </p>
+                  <p className="mb-1 text-xs font-semibold"
+                    style={{ color: 'rgb(var(--ds-text-primary))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Up to 15 points
+                  </p>
+                  <p className="text-xs leading-relaxed"
+                    style={{ color: 'rgb(var(--ds-text-secondary))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Very new accounts that immediately see large payments get penalized. Under 7 days with large
+                    amounts scores highest, under 30 days with very large amounts adds a medium penalty.
+                  </p>
+                </div>
+                <div className="rounded-2xl p-4"
+                  style={{ background: 'rgb(var(--ds-bg-elevated))', border: '1px solid rgb(var(--ds-border) / 0.12)' }}>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em]"
+                    style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Structuring around 50k
+                  </p>
+                  <p className="mb-1 text-xs font-semibold"
+                    style={{ color: 'rgb(var(--ds-text-primary))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Up to 15 points
+                  </p>
+                  <p className="text-xs leading-relaxed"
+                    style={{ color: 'rgb(var(--ds-text-secondary))', fontFamily: 'var(--ds-font-mono)' }}>
+                    Looks for several similar amounts clustered near the 50k reporting threshold. When 3+ similar
+                    payments occur close to that level, they are treated as potential structuring behavior.
+                  </p>
+                </div>
+              </div>
+              <p className="mt-4 text-[10px]"
+                style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                Fraud Lens is a rule-based demo engine. Scores are deterministic and should be used for training,
+                experimentation, and storytelling — not as a replacement for production fraud systems.
+              </p>
+            </div>
           </motion.div>
         )}
 

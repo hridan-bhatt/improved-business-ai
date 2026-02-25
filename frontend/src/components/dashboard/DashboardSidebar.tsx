@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { NavLink } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../../context/AuthContext'
@@ -27,18 +27,37 @@ export default function DashboardSidebar({ open, onToggle }: { open: boolean; on
     return () => clearInterval(t)
   }, [])
 
-  useEffect(() => {
-    // Fetch fraud alert count for badge
-    api<{ has_data: boolean }>('/fraud/status')
-      .then(s => {
-        if (s.has_data) {
-          api<{ alerts: { id: number; type: string; score: number }[] }>('/fraud/insights')
-            .then(d => setFraudAlertCount(d.alerts?.length ?? 0))
-            .catch(() => {})
-        }
-      })
-      .catch(() => {})
+  const fetchFraudAlertCount = useCallback(async () => {
+    try {
+      const s = await api<{ has_data: boolean }>('/fraud/status')
+      if (!s.has_data) {
+        setFraudAlertCount(0)
+        return
+      }
+      const d = await api<{ alerts: { id: number; type: string; score: number }[] }>('/fraud/insights')
+      setFraudAlertCount(d.alerts?.length ?? 0)
+    } catch {
+      // swallow errors, keep existing badge state
+    }
   }, [])
+
+  useEffect(() => {
+    // Initial fetch of fraud alert count for badge
+    fetchFraudAlertCount()
+  }, [fetchFraudAlertCount])
+
+  useEffect(() => {
+    // Listen for Fraud Lens updates / clears so we can keep the badge in sync
+    const handler = () => {
+      fetchFraudAlertCount()
+    }
+    window.addEventListener('fraud:updated', handler)
+    window.addEventListener('fraud:cleared', handler)
+    return () => {
+      window.removeEventListener('fraud:updated', handler)
+      window.removeEventListener('fraud:cleared', handler)
+    }
+  }, [fetchFraudAlertCount])
 
   const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 

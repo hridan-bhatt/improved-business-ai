@@ -16,6 +16,7 @@ import { useAuth } from '../../context/AuthContext'
 const ACCENT = '#4ADE80'
 
 type ChartPoint = { name: string; usage: number }
+type WindowRange = 7 | 14 | 30 | 'lifetime'
 
 /* ── 3D Tilt ─────────────────────────────────────────────── */
 function TiltCard({ children, style = {}, className = '' }: {
@@ -112,6 +113,7 @@ export default function GreenGrid() {
   const [peak, setPeak] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isClearing, setIsClearing] = useState(false)
+  const [windowRange, setWindowRange] = useState<WindowRange>(7)
   const { hasData, loading, refreshStatus } = useModuleStatus('green-grid')
   const { token } = useAuth()
 
@@ -189,6 +191,14 @@ export default function GreenGrid() {
 
   const savingsPct = savings ?? 0
   const savingsColor = savingsPct > 20 ? '#34D399' : savingsPct > 10 ? '#fbbf24' : ACCENT
+
+  const visibleChartData: ChartPoint[] | null = (() => {
+    if (!chartData || !chartData.length) return null
+    if (windowRange === 'lifetime') return chartData
+    const size = windowRange
+    if (!size || chartData.length <= size) return chartData
+    return chartData.slice(chartData.length - size)
+  })()
 
   return (
     <ModuleLayout>
@@ -350,22 +360,56 @@ export default function GreenGrid() {
           >
             <div className="pointer-events-none absolute -right-8 top-0 h-40 w-40 rounded-full blur-3xl"
               style={{ background: `${ACCENT}06` }} />
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between gap-3">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
                 style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
                 ENERGY USAGE TIMELINE
               </p>
-              <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: ACCENT }} />
-                <span className="text-[10px]" style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
-                  LIVE DATA
-                </span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: ACCENT }} />
+                  <span className="text-[10px]" style={{ color: 'rgb(var(--ds-text-muted))', fontFamily: 'var(--ds-font-mono)' }}>
+                    LIVE DATA
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 rounded-full px-1.5 py-0.5"
+                  style={{ background: 'rgb(var(--ds-bg-elevated))', border: '1px solid rgb(var(--ds-border) / 0.15)' }}>
+                  {[7, 14, 30].map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setWindowRange(d as WindowRange)}
+                      className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                      style={{
+                        fontFamily: 'var(--ds-font-mono)',
+                        background: windowRange === d ? 'rgba(74,222,128,0.16)' : 'transparent',
+                        color: windowRange === d ? ACCENT : 'rgb(var(--ds-text-muted))',
+                        border: windowRange === d ? '1px solid rgba(74,222,128,0.45)' : '1px solid transparent',
+                      }}
+                    >
+                      {d}d
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setWindowRange('lifetime')}
+                    className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                    style={{
+                      fontFamily: 'var(--ds-font-mono)',
+                      background: windowRange === 'lifetime' ? 'rgba(74,222,128,0.16)' : 'transparent',
+                      color: windowRange === 'lifetime' ? ACCENT : 'rgb(var(--ds-text-muted))',
+                      border: windowRange === 'lifetime' ? '1px solid rgba(74,222,128,0.45)' : '1px solid transparent',
+                    }}
+                  >
+                    Lifetime
+                  </button>
+                </div>
               </div>
             </div>
-            {chartData?.length ? (
+            {visibleChartData?.length ? (
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <AreaChart data={visibleChartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                     <defs>
                       <linearGradient id="greenFill" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor={ACCENT} stopOpacity={0.3} />
@@ -378,7 +422,7 @@ export default function GreenGrid() {
                       stroke="transparent"
                       tick={{ fontSize: 10, fontFamily: 'var(--ds-font-mono)', fill: 'rgb(var(--ds-text-muted))' }}
                       tickLine={false} axisLine={false}
-                      interval={Math.max(0, Math.floor((chartData?.length ?? 0) / 8) - 1)}
+                      interval={Math.max(0, Math.floor((visibleChartData?.length ?? 0) / 8) - 1)}
                     />
                     <YAxis
                       stroke="transparent"
@@ -407,7 +451,7 @@ export default function GreenGrid() {
       </motion.div>
 
       {/* ── Usage distribution bar chart ─────────────── */}
-      {chartData && chartData.length > 1 && (
+      {visibleChartData && visibleChartData.length > 1 && (
         <motion.div initial="hidden" animate="visible" variants={reveal} transition={{ delay: 0.26 }}>
           <TiltCard
               className="relative overflow-hidden rounded-2xl p-6"
@@ -419,7 +463,7 @@ export default function GreenGrid() {
               </p>
               <div className="h-48">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData.slice(0, 24)} barSize={14} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <BarChart data={visibleChartData.slice(0, 24)} barSize={14} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                     <defs>
                       <linearGradient id="greenBar" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor={ACCENT} stopOpacity={0.9} />

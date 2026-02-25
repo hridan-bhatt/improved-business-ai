@@ -95,11 +95,19 @@ def upload_fraud_csv(file: UploadFile, db: Session) -> Dict[str, Any]:
         # Timeline: group by date if timestamp present
         timeline: Dict[str, Dict[str, int]] = {}
 
-        for row in rows:
+        # Use a bounded sliding window of recent transactions as "history" when scoring
+        # each row. This keeps the engine responsive for large CSVs while preserving
+        # local pattern detection (velocity, structuring, etc.).
+        WINDOW_SIZE = 200
+
+        for idx, row in enumerate(rows):
             tx_id = str(row.get("transaction_id", "")).strip() or f"TX-{len(transactions_out)}"
             amount = _safe_float(row.get("amount"))
 
-            result = compute_fraud_score(row, rows)
+            history_start = max(0, idx - WINDOW_SIZE)
+            history_slice = rows[history_start:idx]
+
+            result = compute_fraud_score(row, history_slice)
             risk_score: int = result["risk_score"]
             risk_label: str = result["risk_label"]
 
