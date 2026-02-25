@@ -124,7 +124,10 @@ function HealthRing({ score, color }: { score: number; color: string }) {
         animate={{ strokeDashoffset: circ - (circ * score) / 100 }}
         transition={{ duration: 1.8, ease: [0.22, 1, 0.36, 1], delay: 0.4 }}
         transform="rotate(-90 76 76)"
-        style={{ filter: `drop-shadow(0 0 8px ${color}) drop-shadow(0 0 20px ${color}44)` }}
+        style={{
+          // Softer, more neutral glow that works in both light and dark themes
+          filter: `drop-shadow(0 0 5px ${color}55) drop-shadow(0 0 14px rgba(15,23,42,0.18))`,
+        }}
       />
     </svg>
   )

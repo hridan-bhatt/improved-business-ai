@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pandas as pd
 from typing import List, Dict, Any
 from fastapi import UploadFile, HTTPException
@@ -6,12 +9,76 @@ from models.fraud import FraudRecord
 from services.fraud_engine import normalize_columns, compute_fraud_score
 
 
+_SNAPSHOT_PATH = Path(__file__).resolve().parent / "fraud_snapshot.json"
+
+
+def _write_fraud_snapshot(payload: Dict[str, Any]) -> None:
+    """
+    Persist the latest FraudLens engine output so other services (insights, PDF)
+    can reuse the exact same risk scores and labels.
+    """
+    try:
+        _SNAPSHOT_PATH.write_text(
+            json.dumps(payload, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        # Snapshot failures must never break main fraud upload flow
+        pass
+
+
+def _read_fraud_snapshot():
+    try:
+        if not _SNAPSHOT_PATH.exists():
+            return None
+        return json.loads(_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
 def get_fraud_status(db: Session) -> Dict[str, Any]:
     count = db.query(FraudRecord).count()
     return {"has_data": count > 0, "row_count": count}
 
 
 def get_fraud_insights(db: Session) -> Dict[str, Any]:
+    # Preferred path: reuse the exact engine output snapshot so scores/labels
+    # match FraudLens analysis and the exported PDF.
+    snapshot = _read_fraud_snapshot()
+    if snapshot and snapshot.get("transactions"):
+        txs = snapshot.get("transactions") or []
+        summary = snapshot.get("summary") or {}
+        total = int(summary.get("total_transactions") or len(txs))
+
+        flagged_txs = [
+            t for t in txs
+            if t.get("is_fraud") or t.get("risk_label") != "Safe"
+        ]
+        anomalies_detected = len(flagged_txs)
+        pct = (anomalies_detected / total * 100) if total > 0 else 0
+        risk = "high" if pct > 50 else "medium" if pct > 20 else "low"
+
+        alerts = []
+        for t in flagged_txs[:50]:
+            try:
+                score_val = float(t.get("risk_score", 0)) / 100.0
+            except (TypeError, ValueError):
+                score_val = 0.0
+            alerts.append({
+                "id": str(t.get("transaction_id", "")),
+                "type": str(t.get("risk_label", "Fraud flagged") or "Fraud flagged"),
+                "score": max(0.0, min(1.0, score_val)),
+            })
+
+        return {
+            "anomalies_detected": anomalies_detected,
+            "total_transactions": total,
+            "risk_level": risk,
+            "alerts": alerts,
+        }
+
+    # Fallback when no snapshot is available: derive coarse insights
+    # directly from the persisted fraud records.
     records = db.query(FraudRecord).all()
     if not records:
         return {
@@ -30,11 +97,20 @@ def get_fraud_insights(db: Session) -> Dict[str, Any]:
     alerts = []
     for r in fraud_records[:50]:
         risk_score = getattr(r, "risk_score", None)
-        score_val = float(risk_score) / 100 if risk_score is not None else round(float(r.amount) / 1000 if r.amount else 0.5, 2)
+        if risk_score is not None:
+            score_val = max(0.0, min(1.0, float(risk_score) / 100.0))
+        else:
+            # Very rough fallback based only on amount scale so that callers still
+            # receive a usable score in [0,1] even without engine metadata.
+            try:
+                amt = float(r.amount or 0)
+                score_val = min(1.0, max(0.3, amt / 10000.0))
+            except (TypeError, ValueError):
+                score_val = 0.5
         alerts.append({
             "id": r.transaction_id,
             "type": getattr(r, "risk_label", "Fraud flagged") or "Fraud flagged",
-            "score": min(1.0, score_val),
+            "score": score_val,
         })
 
     return {
@@ -168,7 +244,7 @@ def upload_fraud_csv(file: UploadFile, db: Session) -> Dict[str, Any]:
             for k, v in sorted(timeline.items())
         ]
 
-        return {
+        result: Dict[str, Any] = {
             "transactions": transactions_out,
             "summary": {
                 "total_transactions": total,
@@ -188,6 +264,11 @@ def upload_fraud_csv(file: UploadFile, db: Session) -> Dict[str, Any]:
                 "timeline_series": timeline_series,
             },
         }
+
+        # Persist snapshot so reports and insights can exactly mirror this analysis.
+        _write_fraud_snapshot(result)
+
+        return result
 
     except HTTPException:
         db.rollback()
